@@ -1,0 +1,4 @@
+- [x] Schema validated
+- [x] RLS/POPIA enforced
+- [x] Audit logging active
+- [x] CI green
