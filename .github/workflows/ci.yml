@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 20
       - name: Install deps
-        run: npm ci
+                      run: npm install
       - name: DB Migrate + Seed
         run: |
           psql $DATABASE_URL -f infra/db/migrations/0001_init.sql
