@@ -11,7 +11,7 @@
 ## Merge Details
 
 - **Merge Method**: Squash & Merge
-- **Merge SHA**: $(git rev-parse HEAD)
+- **Merge SHA**: 5e7e767
 - **Branch**: phase-2-payments-yoco -> main
 - **Tag Created**: v1.0-phase2
 
