@@ -1,0 +1,29 @@
+# Example Dockerfile with Doppler integration
+# Ledger Reference: Tippy Decision Ledger v1.0 (Final), § 25
+
+FROM node:18-alpine
+
+# Install Doppler CLI
+RUN curl -sLf https://cli.doppler.com/install.sh | sh
+
+# Copy application code
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+# Copy Doppler entrypoint
+COPY ops/doppler/docker-entrypoint.sh /usr/local/bin/doppler-entrypoint.sh
+RUN chmod +x /usr/local/bin/doppler-entrypoint.sh
+
+# Set entrypoint to use Doppler
+ENTRYPOINT ["/usr/local/bin/doppler-entrypoint.sh"]
+
+# Default command (will be wrapped by Doppler)
+CMD ["node", "server.js"]
+
+# Environment variables required at runtime:
+# - DOPPLER_TOKEN: Service token for Doppler authentication
+# - DOPPLER_ENVIRONMENT: One of development, staging, production
+

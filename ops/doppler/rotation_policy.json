@@ -1,0 +1,20 @@
+{
+  "rotation_period_days": 90,
+  "critical_secret_rotation_days": 30,
+  "rotation_owner": "devops@mentenova.co.za",
+  "notifications": ["security@mentenova.co.za"],
+  "critical_secrets": [
+    "TIPPY_DB_PASSWORD",
+    "TIPPY_YOCO_API_KEY",
+    "TIPPY_SENDGRID_API_KEY",
+    "TIPPY_TWILIO_API_KEY",
+    "GITHUB_OAUTH_CLIENT_SECRET"
+  ],
+  "rotation_reminder_days_before": 7,
+  "audit_log_retention_days": 365,
+  "compliance_notes": {
+    "popia": "Phone numbers (MSISDN) must be hashed (SHA256) before storage. Only last4 digits may be stored in masked audit exports.",
+    "ledger_reference": "Tippy Decision Ledger v1.0 (Final), § 25 — Environment, Credentials & Secrets Management (Locked)"
+  }
+}
+
