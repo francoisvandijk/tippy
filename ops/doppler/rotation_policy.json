@@ -1,6 +1,3 @@
-{
-  "rotation_period_days": 90,
-  "critical_secret_rotation_days": 30,
+{ "rotation_period_days": 90, "critical_secret_rotation_days": 30,
   "rotation_owner": "devops@mentenova.co.za",
-  "notifications": ["security@mentenova.co.za"]
-}
+  "notifications": ["security@mentenova.co.za"] }

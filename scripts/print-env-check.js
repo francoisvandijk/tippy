@@ -8,10 +8,6 @@ const required = [
 
 const missing = required.filter(k => !process.env[k]);
 
-if (missing.length) {
-  console.error('Missing required env keys:', missing.join(', '));
-  process.exit(1);
-}
+if (missing.length) { console.error('Missing required env keys:', missing.join(', ')); process.exit(1); }
 
 console.log('Env check: PASS (values not printed)');
-
