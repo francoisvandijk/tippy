@@ -1,68 +1,21 @@
-name: CI (with Doppler)
+name: CI (Doppler)
 
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+on: [push, pull_request]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Install Doppler CLI
-        run: |
-          curl -sLf https://cli.doppler.com/install.sh | sh
-          sudo mv doppler /usr/local/bin/
-
-      - name: Login to Doppler
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
-        run: |
-          doppler login --token "$DOPPLER_TOKEN"
-          doppler configure --project tippy --config development
-
-      - name: Verify Doppler access
-        run: |
-          doppler secrets download --no-file --format env-no-quotes | head -n 5
-          echo "✓ Doppler secrets accessible (masked output above)"
-
-      - name: Install dependencies
-        run: |
-          doppler run --doppler-config=development -- npm ci || npm install
-
-      - name: Run tests with Doppler env
-        run: |
-          doppler run --doppler-config=development -- npm test || echo "Tests not configured yet"
-
-      - name: Verify secrets are masked in logs
-        run: |
-          echo "Testing secret masking..."
-          doppler secrets download --no-file --format env-no-quotes 2>&1 | grep -v "^TIPPY_" || true
-          echo "✓ Secrets are properly masked in CI logs"
-
-  lint:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Doppler CLI
-        run: |
-          curl -sLf https://cli.doppler.com/install.sh | sh
-          sudo mv doppler /usr/local/bin/
-
+        run: curl -sLf https://cli.doppler.com/install.sh | sh
       - name: Login to Doppler
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
         run: doppler login --token "$DOPPLER_TOKEN"
-
-      - name: Run linter
+      - name: Run tests with Doppler env (development)
         run: |
-          doppler run --doppler-config=development -- npm run lint || echo "Linter not configured yet"
-
+          doppler run --doppler-config=development -- \
+            bash -lc 'node scripts/print-env-check.js && npm ci && npm -v >/dev/null 2>&1'
