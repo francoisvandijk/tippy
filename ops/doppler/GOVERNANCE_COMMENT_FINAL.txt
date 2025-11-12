@@ -1,0 +1,9 @@
+**§25 Governance Review — Doppler Integration**
+
+- Project: tippy  
+- Environments: dev, staging, prod  
+- CI token added to GitHub Actions (`DOPPLER_TOKEN_CI`)  
+- Workflow: CI (Doppler)  
+
+**Result:** Env check PASS (values not printed)
+
