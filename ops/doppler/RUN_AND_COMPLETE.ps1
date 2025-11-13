@@ -55,6 +55,14 @@ while ($waited -lt $maxWait) {
                     if ($envCheck) {
                         Write-Host "  $envCheck" -ForegroundColor Green
                         $success = $true
+                        
+                        # Append Doppler CI audit entry
+                        Write-Host "`n  Updating audit log..." -ForegroundColor Gray
+                        try {
+                            & "$PSScriptRoot/audit-ci-success.ps1" -RunId $runId -Branch "main"
+                        } catch {
+                            Write-Host "  [WARN] Failed to update audit log: $_" -ForegroundColor Yellow
+                        }
                     } else {
                         Write-Host "  [WARN] Env check message not found in logs" -ForegroundColor Yellow
                     }

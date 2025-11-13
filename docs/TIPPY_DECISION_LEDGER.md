@@ -39,6 +39,7 @@
 - [§26 — Guard Registration Accessibility & Device Independence (Locked)](#26--guard-registration-accessibility--device-independence-locked)
 - [§27 — Brand Naming & Architecture (Locked)](#27--brand-naming--architecture-locked)
 - [§28 — Official Logo Lock (Locked)](#28--official-logo-lock-locked)
+- [§29 — Document & Artifact Storage Policy (Locked)](#29--document--artifact-storage-policy-locked)
 
 ---
 
@@ -1223,6 +1224,49 @@ Covers MSISDN-only registration, QR assignment, payout, SMS, etc.
 - No recoloring.
 - No rotation.
 - Minimum clear space defined.
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
+
+---
+
+## §29 — Document & Artifact Storage Policy (Locked)
+
+**Status**: Locked — Final  
+**Effective Date**: 2025-11-13  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+### Overview
+
+All Tippy project documents, specifications, governance artifacts, and AI-generated outputs that are relevant to design, implementation, operations, or compliance MUST be stored in the canonical GitHub repository (francoisvandijk/tippy) under version control.
+
+### Requirements
+
+1. **Mandatory Storage**: All long-lived documents (e.g., specs, flows, prompts, diagrams, governance notes) MUST be stored in the GitHub repository.
+
+2. **No External-Only Documents**: Long-lived documents MAY NOT exist solely outside GitHub (e.g., only in local files, chat logs, or cloud drives) without a committed copy in the repo.
+
+3. **Organized Storage**: Documents MUST be stored in appropriate folders, such as:
+   - `docs/` for documentation
+   - `ops/` for operational scripts and runbooks
+   - `ops/doppler/` for Doppler-specific artifacts
+   - Other clearly named directories as needed
+
+4. **Meaningful Filenames**: All documents MUST use meaningful filenames that clearly indicate their purpose and content.
+
+5. **AI Agent Responsibility**: AI agents working on the Tippy project MUST ensure that any new documents or scripts they generate and intend to rely on are:
+   - Saved to disk
+   - Added to the repository
+   - Committed to the appropriate branch
+
+6. **Phase Close-Out Verification**: Phase close-out for any phase (Phase 1, 2, 3, etc.) MUST include verification that all key artifacts for that phase (flows, specs, CI definitions, prompts, governance notes) are present in the repository and referenced in the Ledger or accompanying governance docs.
+
+7. **Governance Validity**: No material governance decision, CI configuration, or architectural document is considered valid unless it is recorded in the GitHub repository.
+
+### Compliance
+
+- **Version Control**: All documents MUST be under Git version control
+- **Repository Sync**: Local-only documents MUST be committed and pushed to GitHub
+- **Documentation Reference**: All key documents MUST be referenced in the Ledger or project README
 
 **This section is LOCKED. No modifications without Ledger amendment process.**
 
