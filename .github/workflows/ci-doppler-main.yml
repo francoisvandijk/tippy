@@ -1,4 +1,4 @@
-name: CI (Doppler)
+name: CI (Doppler Main)
 
 on:
   workflow_dispatch:
@@ -8,15 +8,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    permissions: { contents: read }
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Doppler CLI
         run: curl -sLf https://cli.doppler.com/install.sh | sh
+
       - name: Login to Doppler
-        env: { DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }} }
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
         run: doppler login --token "$DOPPLER_TOKEN"
+
       - name: Run tests with Doppler env (development)
         run: |
           doppler run --doppler-config=development -- \
-            bash -lc 'node scripts/print-env-check.js; echo ok'
+          bash -lc 'node scripts/print-env-check.js; echo ok'
