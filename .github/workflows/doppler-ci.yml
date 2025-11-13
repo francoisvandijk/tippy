@@ -21,6 +21,6 @@ jobs:
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
         run: |
-          doppler run --project tippy --config development -- \
+          doppler run --project tippy --config dev -- \
           bash -lc 'echo doppler test OK'
 
