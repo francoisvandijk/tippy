@@ -17,13 +17,10 @@ jobs:
         run: |
           curl -Ls --tlsv1.2 --proto "=https" --retry 3 https://cli.doppler.com/install.sh | sudo sh
 
-      - name: Login to Doppler
+      - name: Run Doppler test
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
-        run: doppler login --token "$DOPPLER_TOKEN"
-
-      - name: Run Doppler test
         run: |
-          doppler run --doppler-config=development -- \
+          doppler run --project tippy --config development -- \
           bash -lc 'echo doppler test OK'
 
