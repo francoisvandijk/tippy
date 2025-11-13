@@ -28,60 +28,12 @@
   - A merge conflict resolution may have excluded the content
   - Further investigation needed to determine why §19.10 is missing
 
-## Post-Merge Status (2025-11-17)
-
-### Implementation PR #14
-- **PR #14**: Phase 2 Payments and Yoco Implementation — Merged 2025-11-17T12:23:24Z ✅
-- **Status**: Implementation complete and verified
-- **Supersedes**: PR #3 (documentation-only draft, closed)
-
-### CI & Branch Protection
-- **Doppler CI**: ✅ SUCCESS on PR branch (Run IDs: 19429143981, 19429106980)
-- **Doppler CI on main**: ✅ SUCCESS (verified post-merge)
-- **Branch protection**: ✅ ACTIVE (Doppler CI required, verified per PR #13)
-
-### Release Tag
-- **Tag**: v1.0-phase2 ✅ Created
-- **Commit**: fe09566 (PR #14 merge commit)
-
-### §19.9 Compliance Verification
-- **§19.9.1 CI & Doppler**: ✅ PASS (CI passing)
-- **§19.9.2 Branch Protection**: ✅ PASS (active and verified)
-- **§19.9.3 Ledger Verification**: ✅ PASS (implementation matches Ledger)
-- **§19.9.4 Governance Documents**: ✅ PASS (all docs present)
-- **§19.9.5 Phase PR Requirements**: ✅ PASS (PR #14 complete)
-- **§19.9.6 Tags & Versioning**: ✅ PASS (v1.0-phase2 created)
-- **§19.9.7 Post-Merge Requirements**: ✅ PASS (audit log updated)
-- **§19.9.8 Phase Summary**: ✅ PASS (PDF generated)
-- **§19.9.9 Phase Close-Out Declaration**: ✅ READY
-
-### Ledger Sections Implemented
-- **§4**: Data Model — Payments table ✅
-- **§5**: Fees & Calculations — Fee calculation logic ✅
-- **§6**: Key Workflows — User Tipping (Yoco) workflow ✅
-- **§7**: API Surface — Payment endpoints ✅
-- **§13**: POPIA & Security — Masked data, no PII logging ✅
-- **§15**: Environments & Deployment — Env-based config ✅
-- **§25**: Secrets Management — No plaintext secrets ✅
-
-### Audit Log
-- **Entry added**: 2025-11-17T12:23:24Z
-- **File**: `ops/doppler/AUDIT_LOG.txt`
-- **Status**: ✅ Updated
-
-### Phase Summary
-- **PDF**: `docs/releases/PHASE_2_SUMMARY_PHASE2.pdf`
-- **Status**: ✅ Generated and committed
-
----
-
 ## Next Steps
 
-✅ All Phase 2 implementation and close-out tasks completed.
-
-### Additional Verification Items
 1. Verify why §19.10 is missing from main despite PR #9 being merged
-2. Re-verify Ledger content matches authoritative version
+2. Manually configure branch protection in GitHub Settings → Branches → main
+3. Ensure Doppler CI is set as a required check
+4. Re-verify Ledger content matches authoritative version
 
 ---
 
