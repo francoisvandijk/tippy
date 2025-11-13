@@ -39,5 +39,5 @@ $entry = if ($RunId) {
 
 # Append to log
 Add-Content -Path $logPath -Value $entry
-Write-Host "📜 Audit log updated: $entry" -ForegroundColor Green
+Write-Host "Audit log updated: $entry" -ForegroundColor Green
 
