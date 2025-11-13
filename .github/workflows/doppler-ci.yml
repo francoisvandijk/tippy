@@ -24,3 +24,6 @@ jobs:
           doppler run --project tippy --config dev -- \
           bash -lc 'echo doppler test OK'
 
+      - name: Forced failure for Phase 2 test
+        run: echo "forced failure" && exit 1
+
