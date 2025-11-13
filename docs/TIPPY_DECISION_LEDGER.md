@@ -26,6 +26,7 @@
 - [§18 — Acceptance Checklist (Go/No-Go)](#18--acceptance-checklist-gono-go)
 - [§19 — Table / Endpoint Index](#19--table--endpoint-index)
   - [§19.5 — Doppler CI Workflow (Locked)](#195--doppler-ci-workflow-locked)
+  - [§19.9 — Phase Close-Out Process (Locked)](#199--phase-close-out-process-locked)
 - [§20 — Reserved](#20--reserved)
 - [§21 — Reserved](#21--reserved)
 - [§22 — Reserved](#22--reserved)
@@ -692,6 +693,141 @@ All criteria must pass before a release:
 #### 19.5.4 Governance
 
 A successful run of Doppler CI on main is required for phase close-out (v1.0).
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
+
+### §19.9 — Phase Close-Out Process (Locked)
+
+**Status**: Locked — Final  
+**Effective Date**: 2025-11-13  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+#### Scope
+
+Defines the mandatory governance, CI, compliance, and repository steps required to close out any development phase (Phase 1 → Phase N). This section is authoritative and must be executed exactly as written before any new phase may begin.
+
+#### 19.9.1 CI & Doppler Verification Requirements
+
+Before a phase can close:
+
+- `doppler-ci.yml` must run successfully on the active phase branch.
+- CI must run and pass on main after merge.
+- Doppler must be fully integrated:
+  - `doppler run` functional
+  - CI uses `DOPPLER_TOKEN_CI`
+  - Audit log updates on success
+  - No plaintext secrets committed to repo or PR.
+- Missing secrets do not block close-out, unless defined by the phase.
+
+#### 19.9.2 Branch Protection Requirements
+
+Before a phase closes:
+
+- main must enforce:
+  - Require status checks to pass
+  - Required check: Doppler CI
+  - Require PR review
+  - Prevent direct pushes
+  - Enforce signed commits (optional)
+- Phase may not end until this is active.
+- This requirement cannot be bypassed by any agent.
+
+#### 19.9.3 Ledger Verification Requirements
+
+- The Ledger file in the repo must match the authoritative Ledger in memory exactly.
+- All sections must be present and numbered (§1 → §27).
+- All locked sections must match content byte-for-byte.
+- Differences must block phase closure.
+
+#### 19.9.4 Governance Document Requirements
+
+Before closing a phase, the following must exist and be current:
+
+- PR template
+- Phase Gate Checklist
+- §19 Review Checklist
+- Ledger Verification Checklist
+- Governance Log (`docs/GOVERNANCE_LOG.md`)
+- CI Audit Log (`ops/doppler/AUDIT_LOG.txt`)
+
+All must match Ledger requirements and pass agent verification.
+
+#### 19.9.5 Phase PR Requirements
+
+Every phase must end with:
+
+- A final Phase Pull Request, titled: "Phase N — Ready for §19 Review (Final)"
+- Attached checklists:
+  - §19 Review
+  - Phase Gate
+  - Ledger Verification
+- CI green on the phase branch.
+- Manual sign-off from:
+  - Engineering Lead
+  - DevOps Lead
+  - Compliance Officer
+- Merge strategy: Squash & Merge (mandatory).
+
+#### 19.9.6 Tags & Versioning Requirements
+
+After merge to main:
+
+- Agent must create a GitHub Release Tag: `v1.0-phaseN`
+- Release notes must include:
+  - Summary of resolved scope
+  - PR links
+  - Ledger sections completed
+  - Audit confirmation
+  - CI run ID
+- Tag must be immutable once created.
+
+#### 19.9.7 Post-Merge Requirements
+
+- CI must automatically rerun on main.
+- Audit log must automatically append CI success entry.
+- Governance Log must add:
+  - Phase name
+  - Date
+  - Confirmation of CI pass
+  - Confirmation of Ledger sync
+  - Confirmation of branch protection
+- PR branch must be deleted.
+- All docs generated during the phase must be saved into GitHub.
+
+#### 19.9.8 Phase Summary Requirements
+
+After merge:
+
+- Generate a Phase Summary PDF (`Phase N Summary`).
+- PDF must include:
+  - Scope delivered
+  - Ledger sections completed
+  - CI/Audit screenshots
+  - Architectural & schema changes
+  - Next-phase prerequisites
+- Save PDF under: `docs/phase-n/PHASE_N_SUMMARY.pdf`
+
+#### 19.9.9 Phase Close-Out Declaration (Mandatory)
+
+A phase officially closes only when:
+
+- CI is green on main
+- Branch protection is active
+- Ledger matches authoritative memory
+- Governance documents validated
+- PR completed and tagged
+- Governance Log updated
+- Phase Summary saved
+
+No agent may begin the next phase without a Phase Close-Out Declaration.
+
+#### Status
+
+Locked.
+
+#### Purpose
+
+Establishes a repeatable, immutable governance protocol for every development phase.
 
 **This section is LOCKED. No modifications without Ledger amendment process.**
 
