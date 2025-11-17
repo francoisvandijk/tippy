@@ -23,6 +23,7 @@
 - [§11 — Copy / Brand Text (User-Facing)](#11--copy--brand-text-user-facing)
 - [§12 — Logging & Error Taxonomy](#12--logging--error-taxonomy)
 - [§13 — POPIA & Security](#13--popia--security)
+  - [§13.6 — Application Logging Policy (Locked)](#136--application-logging-policy-locked)
 - [§14 — Telemetry & KPIs](#14--telemetry--kpis)
 - [§15 — Environments & Deployment](#15--environments--deployment)
 - [§16 — Tiers (Locked)](#16--tiers-locked)
@@ -568,6 +569,87 @@ MSISDN masked (xxxxxx1234) except for owner or admin.
 ### 13.5 Access Reviews
 
 Quarterly access audits.
+
+### §13.6 — Application Logging Policy (Locked)
+
+**Status**: Locked — Final  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+#### Scope
+
+- This policy governs all *application-level* logging in Tippy backend services (API, workers, CRON jobs) and applies in **all environments** (dev, staging, production).
+
+- It is distinct from **audit logging** (§13, §19.5) but must not contradict it.
+
+#### Prohibited Logging
+
+Application logs MUST **never** contain:
+
+- Full MSISDN / phone numbers (use hashing or masking per §25).
+
+- ID numbers, passport numbers, or other government identifiers.
+
+- Access tokens, refresh tokens, API keys, passwords, or secrets of any kind.
+
+- Full card PANs, CVV, or any PCI-sensitive data.
+
+- Logs MUST NOT contain plaintext copies of any field explicitly governed by POPIA in §25.
+
+#### MSISDN & PII Handling
+
+- Where user or guard phone numbers are relevant to logs:
+
+  - Only **hashed** (`msisdn_hash`) or **masked** variants may be logged, never full values.
+
+- Any PII logged must be:
+
+  - Strictly necessary for debugging or audit correlation.
+
+  - Kept to the minimum required, and aligned with POPIA and §25.x.
+
+#### Use of console.log / console.error
+
+- `console.log`, `console.error`, `console.warn`, and similar console-based logging MAY be used:
+
+  - In development tools, local scripts, and one-off migration utilities.
+
+  - As part of CI scripts strictly for non-sensitive diagnostic messages.
+
+- In **application runtime code** (API routes, services, background workers) running in shared environments:
+
+  - Direct use of `console.*` is **strongly discouraged**.
+
+  - Where used, messages MUST comply with the Prohibited Logging rules above and SHOULD be refactored to use a structured logger in future phases.
+
+#### Structured Logging
+
+- Application logs SHOULD be:
+
+  - Structured (e.g., JSON) where feasible.
+
+  - Include context fields such as `request_id`, `actor_role`, and high-level `action`.
+
+- Logs MUST NOT expose stack traces or internal implementation details to **API responses**; detailed errors belong in logs only.
+
+#### Environment-specific Behaviour
+
+- Production environments MUST:
+
+  - Avoid verbose debug logging.
+
+  - Never log secrets or sensitive PII.
+
+- Development and staging environments MAY enable more verbose logs, but POPIA and secret-handling rules still apply.
+
+#### Relationship to Audit Logging
+
+- This policy does not replace audit logging in §13 and related sections.
+
+- Audit logs remain the canonical record for security and compliance events.
+
+- Application logs MAY reference audit event IDs but MUST NOT duplicate sensitive audit payloads.
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ---
 
