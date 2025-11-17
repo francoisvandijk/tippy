@@ -73,11 +73,28 @@
 - **PDF**: `docs/releases/PHASE_2_SUMMARY_PHASE2.pdf`
 - **Status**: ✅ Generated and committed
 
+### P1.3 Implementation (PR #25)
+- **PR #25**: P1.3 - Guard Registration, Welcome SMS, Referrals and Payouts — Merged 2025-11-17T21:33:41Z ✅
+- **Merge commit**: b03b3b2b5f3b75df88f454c850044cd3a35bc240
+- **Merged by**: francoisreview
+- **CI on main after merge**: ✅ Doppler CI SUCCESS (Run ID: 19445286248)
+- **Status**: AI_VERIFIED_AND_HUMAN_APPROVED_MERGED
+- **Scope**: 
+  - Guard registration flow (admin + referrer) with anti-abuse limits
+  - Welcome SMS per §24.3 (SendGrid integration)
+  - Referrals flow with POPIA-compliant MSISDN handling
+  - Payouts flow (calculation, batch export, guard views)
+- **Ledger sections**: §§24.3, 24.4, 9, 10, 13, 2, 8 ✅
+- **Test results**: 45/45 tests passing
+- **Build**: ✅ Passes
+- **Governance**: All §19.10 conditions met, no locked files modified
+
 ---
 
 ## Next Steps
 
 ✅ All Phase 2 implementation and close-out tasks completed.
+✅ P1.3 implementation merged and verified.
 
 ### Additional Verification Items
 1. Verify why §19.10 is missing from main despite PR #9 being merged
