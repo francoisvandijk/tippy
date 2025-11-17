@@ -1,0 +1,54 @@
+## Summary
+
+This PR adds §19.10 — AI Auto-Approval & Auto-Merge Exception (Locked) to the Tippy Decision Ledger. This section replaces the existing §19.10 with a more comprehensive policy that includes both auto-approval and auto-merge capabilities for AI agents.
+
+## Changes
+
+- **Updated §19.10** in `docs/TIPPY_DECISION_LEDGER.md`:
+  - Replaced existing "AI Auto-Approval Exception" with "AI Auto-Approval & Auto-Merge Exception"
+  - Added comprehensive scope definitions (allowed PR scope, file path restrictions)
+  - Added technical preconditions (build, tests, migrations, static checks, secrets/POPIA guardrails)
+  - Added CI preconditions (GitHub/Doppler status checks, merge state)
+  - Added auto-approval and auto-merge behaviour specifications
+  - Added audit logging requirements
+  - Added human override mechanisms
+
+- **Updated Table of Contents** to reflect new section title
+
+- **Created `docs/AI_AUTO_APPROVAL_AGENT_SPEC.md`**:
+  - Operational checklist for AI agents implementing §19.10
+  - Step-by-step verification procedures
+  - Audit entry format specifications
+
+## Policy Highlights
+
+§19.10 defines the **only** circumstances under which an AI agent may:
+1. **Approve** a Pull Request as a reviewer
+2. **Merge** that Pull Request into `main`
+
+without human review.
+
+Key requirements:
+- Scope limited to implementation-only changes (`src/**`, `tests/**`, `infra/db/migrations/**`)
+- Explicit exclusions for governance files (Ledger, locked sections, Doppler configs)
+- Local technical checks must pass (build, tests, migrations, lint, typecheck)
+- CI preconditions must be satisfied (all required checks green, mergeable state)
+- Audit logging required for all AI-approved/merged PRs
+- Human override via `no-auto-merge` label
+
+## Compliance
+
+- ✅ Only Ledger file and new agent spec doc modified
+- ✅ Existing §19.10 replaced (not duplicated)
+- ✅ All other locked sections preserved
+- ✅ TOC updated correctly
+- ✅ No sensitive data introduced
+
+## Important Note
+
+**This PR must be approved by human Governance Lead; AI auto-approval does not apply until §19.10 is on main.**
+
+The new §19.10 policy explicitly excludes modifications to `docs/TIPPY_DECISION_LEDGER.md` from auto-approval/merge, so this governance PR requires human review per the policy itself.
+
+
+
