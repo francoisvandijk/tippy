@@ -7,6 +7,7 @@ import yocoWebhookRouter from './api/routes/yoco-webhook';
 import guardsRouter from './api/routes/guards';
 import referrersRouter from './api/routes/referrers';
 import adminRouter from './api/routes/admin';
+import qrRouter from './api/routes/qr';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +34,9 @@ app.use('/payments', yocoWebhookRouter);
 
 // Guard endpoints (Ledger §7)
 app.use('/guards', guardsRouter);
+
+// QR endpoints (Ledger §7)
+app.use('/qr', qrRouter);
 
 // Referrer endpoints (Ledger §7)
 app.use('/referrers', referrersRouter);
