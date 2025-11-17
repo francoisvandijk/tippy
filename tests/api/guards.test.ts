@@ -185,18 +185,40 @@ describe('POST /guards/register', () => {
 
       // Note: Auth middleware uses role from JWT token, so no DB lookup needed
       // Call sequence for referrer registration:
-      // 1. referrers - lookup referrer by userId
-      // 2. guards - check if guard exists
-      // 3. users - create user record
-      // 4. guards - create guard record
-      // 5. guard_registration_events - create registration event
-      // 6. guard_registration_events - update registration event with SMS status
-      // 7. referrals - create referral record
+      // 1-3. guard_registration_events - anti-abuse checks (daily, device, IP limits)
+      // 4. referrers - lookup referrer by userId
+      // 5. guards - check if guard exists
+      // 6. users - create user record
+      // 7. guards - create guard record
+      // 8. guard_registration_events - create registration event
+      // 9. guard_registration_events - update registration event with SMS status
+      // 10. referrals - create referral record
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
         
-        if (table === 'referrers' && callCount === 1) {
+        // Anti-abuse checks (count queries return 0 - under limit)
+        // Daily limit check always runs (call 1)
+        // IP limit check runs if IP is available (call 2, usually available from req.ip)
+        // Device limit check only runs if device_id header is provided (not in this test)
+        if (table === 'guard_registration_events' && (callCount === 1 || callCount === 2)) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                gte: vi.fn(() => ({
+                  count: vi.fn(() =>
+                    Promise.resolve({
+                      count: 0,
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'referrers' && callCount === 3) {
           // Referrer lookup - must return ACTIVE status
           return {
             select: vi.fn(() => ({
@@ -212,7 +234,7 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'guards' && callCount === 2) {
+        if (table === 'guards' && callCount === 4) {
           // Guard lookup (doesn't exist)
           return {
             select: vi.fn(() => ({
@@ -228,12 +250,12 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'users' && callCount === 3) {
+        if (table === 'users' && callCount === 5) {
           // User creation
           return createInsertNoSelect();
         }
         
-        if (table === 'guards' && callCount === 4) {
+        if (table === 'guards' && callCount === 6) {
           // Guard creation
           return {
             insert: vi.fn(() => ({
@@ -249,7 +271,7 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'guard_registration_events' && callCount === 5) {
+        if (table === 'guard_registration_events' && callCount === 7) {
           // Registration event
           return {
             insert: vi.fn(() => ({
@@ -265,12 +287,12 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'guard_registration_events' && callCount === 6) {
+        if (table === 'guard_registration_events' && callCount === 8) {
           // Update registration event
           return createUpdateChain();
         }
         
-        if (table === 'referrals' && callCount === 7) {
+        if (table === 'referrals' && callCount === 9) {
           // Referral creation
           return {
             insert: vi.fn(() => ({
@@ -402,12 +424,30 @@ describe('POST /guards/register', () => {
     it('should ignore referrer_id in body when invoked by referrer (security)', async () => {
       const referrerToken = generateTestToken('referrer-123', 'referrer');
 
-      // Same call sequence as referrer registration
+      // Same call sequence as referrer registration (with anti-abuse checks)
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
         
-        if (table === 'referrers' && callCount === 1) {
+        // Anti-abuse checks (daily limit always runs, IP limit runs if IP available)
+        if (table === 'guard_registration_events' && (callCount === 1 || callCount === 2)) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                gte: vi.fn(() => ({
+                  count: vi.fn(() =>
+                    Promise.resolve({
+                      count: 0,
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'referrers' && callCount === 3) {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
@@ -422,7 +462,7 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'guards' && callCount === 2) {
+        if (table === 'guards' && callCount === 4) {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
@@ -437,11 +477,11 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'users' && callCount === 3) {
+        if (table === 'users' && callCount === 5) {
           return createInsertNoSelect();
         }
         
-        if (table === 'guards' && callCount === 4) {
+        if (table === 'guards' && callCount === 6) {
           return {
             insert: vi.fn(() => ({
               select: vi.fn(() => ({
@@ -456,7 +496,7 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'guard_registration_events' && callCount === 5) {
+        if (table === 'guard_registration_events' && callCount === 7) {
           return {
             insert: vi.fn(() => ({
               select: vi.fn(() => ({
@@ -471,11 +511,11 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'guard_registration_events' && callCount === 6) {
+        if (table === 'guard_registration_events' && callCount === 8) {
           return createUpdateChain();
         }
         
-        if (table === 'referrals' && callCount === 7) {
+        if (table === 'referrals' && callCount === 9) {
           return {
             insert: vi.fn(() => ({
               select: vi.fn(() => ({
@@ -490,7 +530,7 @@ describe('POST /guards/register', () => {
           };
         }
         
-        if (table === 'audit_log' && callCount === 8) {
+        if (table === 'audit_log' && callCount === 10) {
           // Audit log insert (non-blocking)
           return {
             insert: vi.fn(() => Promise.resolve({ error: null })),
@@ -855,7 +895,25 @@ describe('POST /guards/register', () => {
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
         
-        if (table === 'referrers' && callCount === 1) {
+        // Anti-abuse checks run first
+        if (table === 'guard_registration_events' && (callCount === 1 || callCount === 2)) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                gte: vi.fn(() => ({
+                  count: vi.fn(() =>
+                    Promise.resolve({
+                      count: 0,
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'referrers' && callCount === 3) {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
@@ -893,7 +951,25 @@ describe('POST /guards/register', () => {
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
         
-        if (table === 'referrers' && callCount === 1) {
+        // Anti-abuse checks run first
+        if (table === 'guard_registration_events' && (callCount === 1 || callCount === 2)) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                gte: vi.fn(() => ({
+                  count: vi.fn(() =>
+                    Promise.resolve({
+                      count: 0,
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'referrers' && callCount === 3) {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({

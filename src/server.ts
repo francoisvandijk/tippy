@@ -5,6 +5,8 @@ import express from 'express';
 import paymentsRouter from './api/routes/payments';
 import yocoWebhookRouter from './api/routes/yoco-webhook';
 import guardsRouter from './api/routes/guards';
+import referrersRouter from './api/routes/referrers';
+import adminRouter from './api/routes/admin';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,6 +33,12 @@ app.use('/payments', yocoWebhookRouter);
 
 // Guard endpoints (Ledger §7)
 app.use('/guards', guardsRouter);
+
+// Referrer endpoints (Ledger §7)
+app.use('/referrers', referrersRouter);
+
+// Admin endpoints (Ledger §7)
+app.use('/admin', adminRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

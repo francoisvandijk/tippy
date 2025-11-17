@@ -36,6 +36,7 @@ const registerGuardSchema = z.object({
   location: z.string().max(255).optional(),
   referrer_id: z.string().uuid().optional(), // Only used if admin supplies it; referrer's ID comes from auth
   ref_code: z.string().optional(), // Alternative: referrer code (for referrer-initiated registration)
+  guard_qr_id: z.string().uuid().optional(), // QR card to assign to guard
 });
 
 router.post(
@@ -61,11 +62,97 @@ router.post(
         location,
         referrer_id: bodyReferrerId,
         ref_code,
+        guard_qr_id,
       } = validationResult.data;
 
       // POPIA compliance: Hash MSISDN before any DB operations
       const msisdnHash = hashPhoneNumber(primary_phone);
       const msisdnMasked = maskPhoneNumber(primary_phone);
+
+      // Anti-abuse checks per Ledger §24.4.5 (only for referrer-initiated registrations)
+      if (req.auth!.role === 'referrer') {
+        const ipAddress = req.ip || req.socket.remoteAddress || null;
+        const userAgent = req.get('user-agent') || null;
+        const deviceId = req.headers['x-device-id'] as string || null;
+
+        // Check daily limits per referrer
+        const guardRegsPerReferrerPerDay = parseInt(process.env.GUARD_REGS_PER_REFERRER_PER_DAY || '15', 10);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const { count: todayRegs } = await supabase
+          .from('guard_registration_events')
+          .select('*', { count: 'exact', head: true })
+          .eq('referrer_id', req.auth!.userId)
+          .gte('created_at', today.toISOString());
+
+        if (todayRegs && todayRegs >= guardRegsPerReferrerPerDay) {
+          return res.status(429).json({
+            error: 'RATE_LIMIT',
+            message: `Daily registration limit exceeded (${guardRegsPerReferrerPerDay} per day)`,
+          });
+        }
+
+        // Check device limit (if device_id provided)
+        if (deviceId) {
+          const guardRegsPerDevicePerDay = parseInt(process.env.GUARD_REGS_PER_DEVICE_PER_DAY || '20', 10);
+          const { count: deviceRegs } = await supabase
+            .from('guard_registration_events')
+            .select('*', { count: 'exact', head: true })
+            .eq('device_id', deviceId)
+            .gte('created_at', today.toISOString());
+
+          if (deviceRegs && deviceRegs >= guardRegsPerDevicePerDay) {
+            return res.status(429).json({
+              error: 'RATE_LIMIT',
+              message: `Daily device registration limit exceeded (${guardRegsPerDevicePerDay} per day)`,
+            });
+          }
+        }
+
+        // Check IP limit
+        if (ipAddress) {
+          const guardRegsPerIpPerHour = parseInt(process.env.GUARD_REGS_PER_IP_PER_HOUR || '30', 10);
+          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+          const { count: ipRegs } = await supabase
+            .from('guard_registration_events')
+            .select('*', { count: 'exact', head: true })
+            .eq('ip_address', ipAddress)
+            .gte('created_at', oneHourAgo.toISOString());
+
+          if (ipRegs && ipRegs >= guardRegsPerIpPerHour) {
+            return res.status(429).json({
+              error: 'RATE_LIMIT',
+              message: `Hourly IP registration limit exceeded (${guardRegsPerIpPerHour} per hour)`,
+            });
+          }
+        }
+      }
+
+      // Verify and assign QR card if provided
+      let qrCodeId: string | undefined;
+      if (guard_qr_id) {
+        const { data: qrCode, error: qrError } = await supabase
+          .from('qr_codes')
+          .select('id, status, assigned_guard_id')
+          .eq('id', guard_qr_id)
+          .single();
+
+        if (qrError || !qrCode) {
+          return res.status(404).json({
+            error: 'VALIDATION_ERROR',
+            message: 'QR card not found',
+          });
+        }
+
+        if (qrCode.status !== 'unassigned') {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'QR card is already assigned',
+          });
+        }
+
+        qrCodeId = qrCode.id;
+      }
 
       // Determine registration method and referrer_id based on auth
       // Per Ledger §24.4: If invoked by referrer, derive referrer_id from req.auth.userId
@@ -186,13 +273,16 @@ router.post(
         }
 
         // Create guard record with hashed MSISDN
+        // Note: guards table has msisdn (for uniqueness) and msisdn_hash (for queries)
+        // Per Ledger: we store both, but msisdn_hash is primary for POPIA compliance
         const displayName = name || `Guard-${primary_phone.slice(-4)}`;
         const { data: newGuard, error: guardError } = await supabase
           .from('guards')
           .insert({
             id: userId,
             display_name: displayName,
-            msisdn_hash: msisdnHash, // POPIA-compliant storage
+            msisdn: primary_phone, // Stored for uniqueness constraint, but not used in queries
+            msisdn_hash: msisdnHash, // POPIA-compliant storage (primary for queries)
             status: 'pending',
             language: language,
             referred_by_referrer_id: actualReferrerId || null,
@@ -212,6 +302,29 @@ router.post(
         guardId = newGuard.id;
       }
 
+      // Assign QR card to guard if provided
+      if (qrCodeId && guardId) {
+        const { error: qrAssignError } = await supabase
+          .from('qr_codes')
+          .update({
+            assigned_guard_id: guardId,
+            status: 'assigned',
+            assigned_at: new Date().toISOString(),
+          })
+          .eq('id', qrCodeId);
+
+        if (qrAssignError) {
+          console.error("[guards] Error assigning QR code", qrAssignError?.message);
+          // Non-blocking: continue even if QR assignment fails
+        } else {
+          // Update guard status to active if QR assigned
+          await supabase
+            .from('guards')
+            .update({ status: 'active', activated_at: new Date().toISOString() })
+            .eq('id', guardId);
+        }
+      }
+
       // Create guard_registration_events record
       const { data: registrationEvent, error: eventError } = await supabase
         .from('guard_registration_events')
@@ -220,10 +333,13 @@ router.post(
           guard_msisdn_hash: msisdnHash, // POPIA-compliant
           registration_method: registrationMethod,
           referrer_id: actualReferrerId || null,
-          actor_user_id: req.auth!.userId, // Extract from auth token (P1.6)
+          registered_by_user_id: req.auth!.userId, // Extract from auth token (P1.6)
+          actor_user_id: req.auth!.userId, // For backward compatibility
           actor_role: req.auth!.role, // Extract from auth token (P1.6)
           ip_address: req.ip || req.socket.remoteAddress || null,
           user_agent: req.get('user-agent') || null,
+          device_id: req.headers['x-device-id'] as string || null,
+          qr_code_id: qrCodeId || null,
           status: 'completed',
           metadata: {
             language,
@@ -446,6 +562,145 @@ router.get(
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
         message: 'Failed to fetch guard profile',
+      });
+    }
+  }
+);
+
+/**
+ * GET /guards/me/earnings
+ * Get current guard's earnings summary
+ * Per Ledger §7: Guard endpoint
+ * Per Ledger §9: Payouts visibility
+ * 
+ * Auth: Requires 'guard' role (Ledger §2.4, §8)
+ */
+router.get(
+  '/me/earnings',
+  requireAuth,
+  requireRole('guard'),
+  async (req: Request, res: Response) => {
+    try {
+      const guardId = req.auth!.userId;
+
+      // Fetch guard with financial data
+      const { data: guard, error: guardError } = await supabase
+        .from('guards')
+        .select('id, lifetime_gross_tips, lifetime_net_tips, lifetime_payouts, status')
+        .eq('id', guardId)
+        .single();
+
+      if (guardError || !guard) {
+        return res.status(404).json({
+          error: 'PROCESSOR_ERROR',
+          message: 'Guard not found',
+        });
+      }
+
+      // Calculate current unpaid balance
+      const currentBalance = guard.lifetime_net_tips - guard.lifetime_payouts;
+      const isEligibleForPayout = currentBalance >= 50000; // R500 in cents per Ledger §9
+
+      // Get last payout
+      const { data: lastPayout } = await supabase
+        .from('payout_batch_items')
+        .select('payout_batches!inner(processed_date), net_amount_zar_cents, sent_at')
+        .eq('guard_id', guardId)
+        .eq('item_type', 'GUARD')
+        .eq('status', 'sent')
+        .order('sent_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      return res.status(200).json({
+        current_unpaid_balance_zar_cents: currentBalance,
+        is_eligible_for_payout: isEligibleForPayout,
+        lifetime_gross_tips_zar_cents: guard.lifetime_gross_tips,
+        lifetime_net_tips_zar_cents: guard.lifetime_net_tips,
+        lifetime_payouts_zar_cents: guard.lifetime_payouts,
+        last_payout: lastPayout ? {
+          amount_zar_cents: lastPayout.net_amount_zar_cents,
+          date: lastPayout.sent_at,
+        } : null,
+      });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error("[guards] Earnings fetch error", errorMessage);
+      return res.status(500).json({
+        error: 'PROCESSOR_ERROR',
+        message: 'Failed to fetch earnings',
+      });
+    }
+  }
+);
+
+/**
+ * GET /guards/me/payouts
+ * Get paginated list of past payouts for current guard
+ * Per Ledger §7: Guard endpoint
+ * 
+ * Auth: Requires 'guard' role (Ledger §2.4, §8)
+ */
+router.get(
+  '/me/payouts',
+  requireAuth,
+  requireRole('guard'),
+  async (req: Request, res: Response) => {
+    try {
+      const guardId = req.auth!.userId;
+      const page = parseInt(req.query.page as string || '1', 10);
+      const limit = parseInt(req.query.limit as string || '20', 10);
+      const offset = (page - 1) * limit;
+
+      // Fetch payouts
+      const { data: payouts, error: payoutsError } = await supabase
+        .from('payout_batch_items')
+        .select(`
+          id,
+          net_amount_zar_cents,
+          sent_at,
+          status,
+          payout_batches!inner(
+            batch_number,
+            period_start_date,
+            period_end_date,
+            processed_date
+          )
+        `)
+        .eq('guard_id', guardId)
+        .eq('item_type', 'GUARD')
+        .order('sent_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (payoutsError) {
+        return res.status(500).json({
+          error: 'PROCESSOR_ERROR',
+          message: 'Failed to fetch payouts',
+        });
+      }
+
+      // Get total count
+      const { count } = await supabase
+        .from('payout_batch_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('guard_id', guardId)
+        .eq('item_type', 'GUARD');
+
+      return res.status(200).json({
+        payouts: payouts || [],
+        pagination: {
+          page,
+          limit,
+          total: count || 0,
+          total_pages: Math.ceil((count || 0) / limit),
+        },
+      });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error("[guards] Payouts fetch error", errorMessage);
+      return res.status(500).json({
+        error: 'PROCESSOR_ERROR',
+        message: 'Failed to fetch payouts',
       });
     }
   }
