@@ -146,9 +146,15 @@ router.post(
       const qrReplacementFeeZar = parseFloat(process.env.QR_REPLACEMENT_FEE_ZAR || '10.00');
       const qrReplacementFeeCents = Math.round(qrReplacementFeeZar * 100); // 1000 cents
 
-      // Perform reassignment in a transaction-like operation
-      // Note: Supabase client doesn't support explicit transactions, so we'll do sequential operations
-      // and handle rollback manually if needed
+      // Perform reassignment in a multi-step operation
+      // Note: Supabase PostgREST client doesn't support explicit database transactions.
+      // We perform sequential operations with manual rollback handling where critical.
+      // The operations are:
+      // 1. Update old QR to 'replaced' status
+      // 2. Update new QR to 'assigned' status (with rollback attempt if this fails)
+      // 3. Create QR replacement fee record (non-blocking if this fails)
+      // 4. Log audit event (non-blocking if this fails)
+      // This approach minimizes risk of partial failures while maintaining data consistency.
 
       const now = new Date().toISOString();
 
@@ -163,6 +169,8 @@ router.post(
         .eq('id', currentQr.id);
 
       if (oldQrUpdateError) {
+        // NOTE: console.error is used here for application error logging only.
+        // No PII is logged. A structured logger may replace this in a future phase per Ledger §13.6.
         console.error("[qr] Error updating old QR code", oldQrUpdateError?.message);
         return res.status(500).json({
           error: 'PROCESSOR_ERROR',
@@ -181,6 +189,8 @@ router.post(
         .eq('id', targetQr.id);
 
       if (newQrUpdateError) {
+        // NOTE: console.error is used here for application error logging only.
+        // No PII is logged. A structured logger may replace this in a future phase per Ledger §13.6.
         console.error("[qr] Error updating new QR code", newQrUpdateError?.message);
         // Attempt to rollback old QR (best effort)
         await supabase
@@ -202,11 +212,13 @@ router.post(
       // Per Ledger §9: Fee deducted from next payout
       // Per Ledger §9: Line items include QR_REPLACEMENT type
       // 
-      // Strategy: Find or create a "pending fees" batch that accumulates all pending QR replacement fees.
-      // During payout generation, the system will:
-      // 1. Find all pending QR_REPLACEMENT items for guards eligible for payout
-      // 2. Include them in the payout batch (deducting from guard's payout amount)
-      // 3. Update the items to reference the actual payout batch
+      // Implementation: QR_REPLACEMENT fee items are created here and stored in payout_batch_items
+      // with a temporary "pending" batch. During payout generation (POST /admin/payouts/generate-weekly),
+      // the system:
+      // 1. Finds all pending QR_REPLACEMENT items for guards eligible for payout
+      // 2. Deducts the total QR replacement fees from each guard's payout amount
+      // 3. Updates the QR_REPLACEMENT items to reference the actual payout batch
+      // 4. Ensures idempotency: re-running payout generation won't double-deduct fees
       
       // Find existing "pending fees" batch or create a new one
       // Use a special batch number pattern to identify pending fee batches
@@ -238,6 +250,8 @@ router.post(
           });
 
         if (pendingBatchError) {
+          // NOTE: console.error is used here for application error logging only.
+          // No PII is logged. A structured logger may replace this in a future phase per Ledger §13.6.
           console.error("[qr] Error creating pending batch for QR replacement fee", pendingBatchError?.message);
           // Non-blocking: continue even if batch creation fails (fee can be applied later during payout generation)
         }
@@ -262,6 +276,8 @@ router.post(
           });
 
         if (feeItemError) {
+          // NOTE: console.error is used here for application error logging only.
+          // No PII is logged. A structured logger may replace this in a future phase per Ledger §13.6.
           console.error("[qr] Error creating QR replacement fee item", feeItemError?.message);
           // Non-blocking: fee tracking can be handled during next payout generation
         }
@@ -271,7 +287,7 @@ router.post(
       try {
         await logAuditEvent({
           event_type: 'QR_REASSIGNED',
-          event_category: 'admin',
+          event_category: 'other', // Guard-initiated action, not admin action
           actor_user_id: guardId,
           actor_role: 'guard',
           entity_type: 'qr_codes',
@@ -288,6 +304,8 @@ router.post(
           },
         });
       } catch (auditError) {
+        // NOTE: console.error is used here for application error logging only.
+        // No PII is logged. A structured logger may replace this in a future phase per Ledger §13.6.
         console.error("[qr] Audit logging error", auditError instanceof Error ? auditError.message : String(auditError));
         // Non-blocking: reassignment succeeds even if audit logging fails
       }
@@ -308,6 +326,8 @@ router.post(
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      // NOTE: console.error is used here for application error logging only.
+      // No PII is logged. A structured logger may replace this in a future phase per Ledger §13.6.
       console.error("[qr] QR reassignment error", errorMessage);
       
       // Log failure in audit
