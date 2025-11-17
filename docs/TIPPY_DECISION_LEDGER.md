@@ -9,21 +9,16 @@
 - [§1 — System Overview](#1--system-overview)
 - [§2 — Roles & Access](#2--roles--access)
 - [§3 — Config (Admin-Editable Defaults)](#3--config-admin-editable-defaults)
-  - [§3.1 — Platform Infrastructure Providers (Locked)](#31--platform-infrastructure-providers-locked)
 - [§4 — Data Model (Primary Fields)](#4--data-model-primary-fields)
-  - [§4.1 — Primary Data Platform — Supabase (Locked)](#41--primary-data-platform--supabase-locked)
 - [§5 — Fees & Calculations](#5--fees--calculations)
 - [§6 — Key Workflows](#6--key-workflows)
 - [§7 — API Surface (Edge Functions)](#7--api-surface-edge-functions)
-  - [§7.1 — Messaging & Notifications Providers (Locked)](#71--messaging--notifications-providers-locked)
 - [§8 — RLS / Security](#8--rls--security)
-  - [§8.1 — Authentication Provider — Supabase Auth (Locked)](#81--authentication-provider--supabase-auth-locked)
 - [§9 — Payouts (Weekly)](#9--payouts-weekly)
 - [§10 — Referrals (Locked)](#10--referrals-locked)
 - [§11 — Copy / Brand Text (User-Facing)](#11--copy--brand-text-user-facing)
 - [§12 — Logging & Error Taxonomy](#12--logging--error-taxonomy)
 - [§13 — POPIA & Security](#13--popia--security)
-  - [§13.6 — Application Logging Policy (Locked)](#136--application-logging-policy-locked)
 - [§14 — Telemetry & KPIs](#14--telemetry--kpis)
 - [§15 — Environments & Deployment](#15--environments--deployment)
 - [§16 — Tiers (Locked)](#16--tiers-locked)
@@ -32,7 +27,7 @@
 - [§19 — Table / Endpoint Index](#19--table--endpoint-index)
   - [§19.5 — Doppler CI Workflow (Locked)](#195--doppler-ci-workflow-locked)
   - [§19.9 — Phase Close-Out Process (Locked)](#199--phase-close-out-process-locked)
-  - [§19.10 — AI Auto-Approval & Auto-Merge Exception (Locked)](#1910--ai-auto-approval--auto-merge-exception-locked)
+  - [§19.10 — AI Auto-Approval Exception (Locked)](#1910--ai-auto-approval-exception-locked)
 - [§20 — Reserved](#20--reserved)
 - [§21 — Reserved](#21--reserved)
 - [§22 — Reserved](#22--reserved)
@@ -43,8 +38,6 @@
   - [§24.5 — Bulk QR Generation & Print-Ready Cards (Locked)](#245--bulk-qr-generation--print-ready-cards-locked)
 - [§25 — Environment, Credentials & Secrets Management (Locked)](#25--environment-credentials--secrets-management-locked)
   - [§25.1 — Doppler CI Tokens (Locked)](#251--doppler-ci-tokens-locked)
-  - [§25.2 — Official Messaging Provider — SendGrid (Locked)](#252--official-messaging-provider--sendgrid-locked)
-  - [§25.11 — Approved Provider Environment Variable Names (Locked)](#2511--approved-provider-environment-variable-names-locked)
 - [§26 — Guard Registration Accessibility & Device Independence (Locked)](#26--guard-registration-accessibility--device-independence-locked)
 - [§27 — Brand Naming & Architecture (Locked)](#27--brand-naming--architecture-locked)
 - [§28 — Official Logo Lock (Locked)](#28--official-logo-lock-locked)
@@ -170,25 +163,6 @@ AUTO_GENERATE_WEEKLY_PAYOUT = true
 REFERENCE_PREFIX = "TPY"
 ```
 
-### §3.1 — Platform Infrastructure Providers (Locked)
-
-**Status**: Locked — Final  
-**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
-
-- **Primary Operational Database & Auth Provider:** **Supabase**
-- **Database Engine:** **PostgreSQL**
-- **Usage:**
-  - Primary data store for guards, referrers, tips, payouts, QR mappings, audit logs, and any Phase 1–3 data model.
-  - Source of truth for all schema objects defined in §§4, 6, 7, 24, and 25.
-  - Supabase Auth issues JWT tokens consumed by the Tippy backend per §8.1.
-- **Governance:**
-  - All access MUST honor Supabase Row Level Security (RLS) policies defined in §§2, 8, 13.
-  - Service-role keys are strictly forbidden on public or user-facing endpoints.
-  - All Supabase credentials (anon, service role, JWT secret, DB URL) MUST live in the secrets manager per §25—never in code, CI logs, or the Ledger.
-- **Reference:** See §4.1 for data platform details and §8.1 for authentication specifics.
-
-**This section is LOCKED. No modifications without Ledger amendment process.**
-
 ---
 
 ## §4 — Data Model (Primary Fields)
@@ -244,31 +218,6 @@ All sensitive events logged immutably.
 ### app_settings
 
 Key/value configuration store.
-
-### §4.1 — Primary Data Platform — Supabase (Locked)
-
-**Status**: Locked — Final  
-**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
-
-#### Overview
-
-The authoritative operational database for Tippy is Supabase Postgres.
-
-#### Core Requirements
-
-- All persistent entities defined in §4 (guards, referrers, payments, referrals, payouts, sms_events, audit_log, etc.) live in Supabase-managed Postgres schemas.
-
-- Supabase's Row-Level Security (RLS) engine is the canonical enforcement mechanism for per-role and per-user data access as defined in §2 and §8.
-
-- Any future data stores (analytics, caching, warehousing) must treat Supabase Postgres as the system-of-record.
-
-#### Configuration
-
-- Database connection via `SUPABASE_DB_URL` (direct Postgres connection string).
-- Supabase-managed Postgres is the single source of truth for all transactional data.
-- All migrations and schema changes must be applied to Supabase Postgres.
-
-**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ---
 
@@ -374,22 +323,6 @@ Push notification if user stays within:
 - `POST /admin/qr/bulk-generate` (locked Tier-3)
 - `POST /admin/qr/export`
 
-### §7.1 — Messaging & Notifications Providers (Locked)
-
-**Status**: Locked — Final  
-**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
-
-- **Transactional Email Provider:** **SendGrid**
-  - **Usage:** All transactional and governance email (referrer invitations, internal alerts, payout notices, audit notifications). Templates referenced by ID only.
-- **SMS Provider Path:** **SendGrid SMS** or **Twilio SMS gateway**
-  - **Usage:** Guard Welcome SMS per §24.3, referrer activation flows per §24.4, and any future SMS workflow explicitly defined in the Ledger.
-- **Governance:**
-  - No plaintext phone numbers or MSISDNs in logs; masking/hashing per §§13, 24.3, 24.4, 25.
-  - All API keys, messaging service IDs, and template IDs live only in the secrets manager per §25.
-  - SMTP passwords / API keys MUST NOT appear in the Ledger, code, or CI logs.
-
-**This section is LOCKED. No modifications without Ledger amendment process.**
-
 ---
 
 ## §8 — RLS / Security
@@ -399,33 +332,6 @@ Push notification if user stays within:
 - Admin: full system access
 - MSISDN masked except for owner/admin
 - No OTP for MSISDN change (admin-verifiable)
-
-### §8.1 — Authentication Provider — Supabase Auth (Locked)
-
-**Status**: Locked — Final  
-**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
-
-#### Overview
-
-All end-user and referrer authentication is provided by Supabase Auth.
-
-#### Core Requirements
-
-- Tippy trusts only Supabase-issued JWTs signed with the configured `SUPABASE_JWT_SECRET`.
-
-- The `auth.uid()` value from Supabase is mapped to `users.id` in the Tippy schema and is the basis for RLS policies.
-
-- Roles (admin, referrer, guard, internal) are resolved from the `users` table and/or JWT claims exactly as implemented in P1.6.
-
-- Any alternative identity providers must federate into Supabase Auth rather than bypassing it.
-
-#### Configuration
-
-- Authentication endpoints managed by Supabase Auth.
-- JWT validation uses `SUPABASE_JWT_SECRET` for signature verification.
-- User sessions and tokens are managed by Supabase Auth infrastructure.
-
-**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ---
 
@@ -569,87 +475,6 @@ MSISDN masked (xxxxxx1234) except for owner or admin.
 ### 13.5 Access Reviews
 
 Quarterly access audits.
-
-### §13.6 — Application Logging Policy (Locked)
-
-**Status**: Locked — Final  
-**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
-
-#### Scope
-
-- This policy governs all *application-level* logging in Tippy backend services (API, workers, CRON jobs) and applies in **all environments** (dev, staging, production).
-
-- It is distinct from **audit logging** (§13, §19.5) but must not contradict it.
-
-#### Prohibited Logging
-
-Application logs MUST **never** contain:
-
-- Full MSISDN / phone numbers (use hashing or masking per §25).
-
-- ID numbers, passport numbers, or other government identifiers.
-
-- Access tokens, refresh tokens, API keys, passwords, or secrets of any kind.
-
-- Full card PANs, CVV, or any PCI-sensitive data.
-
-- Logs MUST NOT contain plaintext copies of any field explicitly governed by POPIA in §25.
-
-#### MSISDN & PII Handling
-
-- Where user or guard phone numbers are relevant to logs:
-
-  - Only **hashed** (`msisdn_hash`) or **masked** variants may be logged, never full values.
-
-- Any PII logged must be:
-
-  - Strictly necessary for debugging or audit correlation.
-
-  - Kept to the minimum required, and aligned with POPIA and §25.x.
-
-#### Use of console.log / console.error
-
-- `console.log`, `console.error`, `console.warn`, and similar console-based logging MAY be used:
-
-  - In development tools, local scripts, and one-off migration utilities.
-
-  - As part of CI scripts strictly for non-sensitive diagnostic messages.
-
-- In **application runtime code** (API routes, services, background workers) running in shared environments:
-
-  - Direct use of `console.*` is **strongly discouraged**.
-
-  - Where used, messages MUST comply with the Prohibited Logging rules above and SHOULD be refactored to use a structured logger in future phases.
-
-#### Structured Logging
-
-- Application logs SHOULD be:
-
-  - Structured (e.g., JSON) where feasible.
-
-  - Include context fields such as `request_id`, `actor_role`, and high-level `action`.
-
-- Logs MUST NOT expose stack traces or internal implementation details to **API responses**; detailed errors belong in logs only.
-
-#### Environment-specific Behaviour
-
-- Production environments MUST:
-
-  - Avoid verbose debug logging.
-
-  - Never log secrets or sensitive PII.
-
-- Development and staging environments MAY enable more verbose logs, but POPIA and secret-handling rules still apply.
-
-#### Relationship to Audit Logging
-
-- This policy does not replace audit logging in §13 and related sections.
-
-- Audit logs remain the canonical record for security and compliance events.
-
-- Application logs MAY reference audit event IDs but MUST NOT duplicate sensitive audit payloads.
-
-**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ---
 
@@ -1007,287 +832,67 @@ Establishes a repeatable, immutable governance protocol for every development ph
 
 **This section is LOCKED. No modifications without Ledger amendment process.**
 
-### §19.10 — AI Auto-Approval & Auto-Merge Exception (Locked)
+### §19.10 — AI Auto-Approval Exception (Locked)
 
-**Status:** Locked  
+**Scope:**  
 
-**Scope:** Tippy repository (`francoisvandijk/tippy`), `main` branch, GitHub-hosted Pull Requests.
+Defines when an AI agent may self-approve a PR without a human Governance Trio review, while remaining compliant with all Ledger-locking rules.
 
-This section defines the **only** circumstances under which an AI agent may:
+**19.10.1 Conditions for Auto-Approval**  
 
-1. **Approve** a Pull Request as a reviewer, and  
+An AI agent may self-approve a PR **only if all conditions are true**:  
 
-2. **Merge** that Pull Request into `main`  
+1. The PR modifies **no source code**, only governance files.  
 
-without human review.
+2. Changes are strictly additive and do not alter or remove any existing locked section.  
 
-All other cases require human approval in line with §19.5 and §19.9.
+3. CI (Doppler) passes on the PR branch and on main.  
 
----
+4. Immutable audit logs (§25.x) are updated automatically.  
 
-#### 19.10.1 Allowed PR Scope
+5. The agent performs a full §19.9 verification before approval.
 
-AI auto-approval / auto-merge is only permitted when **all** of the following are true:
+**19.10.2 Forbidden Auto-Approval Cases**  
 
-1. **Repository & Target**
+AI agents may *not* auto-approve PRs that:  
 
-   - Repo: `francoisvandijk/tippy`
+- Modify any code, scripts, migrations, or workflows.  
 
-   - Base branch: `main`
+- Change or delete locked sections.  
 
-2. **Branch Naming**
+- Introduce secrets, tokens, or environment variables.  
 
-   - Head branch starts with one of:
+- Affect POPIA-protected data models.  
 
-     - `feature/`
+- Are part of a Phase close-out requiring Governance Trio sign-off.
 
-     - `fix/`
+**19.10.3 Required Audit Entries**  
 
-     - `chore/`
+For every auto-approval, the agent must record:  
 
-     - `refactor/`
+- PR number  
 
-3. **Changed File Paths (Positive Scope)**
+- Commit hash  
 
-   - All modified files are limited to:
+- Timestamp  
 
-     - `src/**`
+- Ledger sections validated  
 
-     - `tests/**`
+- CI run ID  
 
-     - `infra/db/migrations/**`
+- Auto-approval justification
 
-     - `docs/**` (implementation docs only; see exclusions below)
+**19.10.4 Security & Oversight**  
 
-     - `.github/workflows/**` **only** if changes are limited to:
+Auto-approved PRs are automatically routed to:  
 
-       - Non-secret env names
+- ENGINEERING_LEAD_GH  
 
-       - Step names
+- COMPLIANCE_OFFICER_GH  
 
-       - Matrix / cache settings
+- DEVOPS_LEAD_GH  
 
-       - Comments
-
-4. **Explicit Exclusions (Forbidden for Auto-Merge)**
-
-   - PR **must NOT** modify any of the following:
-
-     - `docs/TIPPY_DECISION_LEDGER.md`
-
-     - Any file whose section is marked **(Locked)** and is purely governance (e.g. `docs/*` governance specs)
-
-     - `ops/doppler/**`
-
-     - `.github/workflows/doppler-ci.yml`
-
-     - Branch protection / CI governance docs:
-
-       - `docs/PHASE_*_GOVERNANCE_CLOSE_OUT.md`
-
-       - Any future file explicitly tagged "Governance – Human Review Required"
-
-   - If **any** of these files are touched, AI may **propose** a PR but may **not** auto-approve or auto-merge it.
-
----
-
-#### 19.10.2 Technical Preconditions (Must Pass)
-
-The AI may consider auto-approval only if the following **local** checks succeed on the PR head commit:
-
-1. **Build**
-
-   - `npm run build` exits with code `0`.
-
-2. **Tests**
-
-   - `npm test` exits with code `0`.
-
-   - No failing tests and no suite setup errors.
-
-3. **Migrations (If Touched)**
-
-   - If any file under `infra/db/migrations/**` is changed:
-
-     - The migration runner (e.g. `npm run migrate` or `ts-node src/migrate.ts`) must succeed against a test or ephemeral database.
-
-     - No `relation does not exist` or `duplicate relation` errors.
-
-     - No RLS policy failures during migration.
-
-4. **Static Checks (If Available)**
-
-   - If scripts exist in `package.json`, they **must** pass when present:
-
-     - `npm run lint`
-
-     - `npm run typecheck`
-
-5. **Secrets & POPIA Guard Rails**
-
-   - A grep scan across the diff must confirm:
-
-     - No new hard-coded secrets (API keys, passwords, tokens).
-
-     - No logging of raw MSISDN or other PII.
-
-   - If such patterns are found, AI must not auto-merge.
-
-If **any** of the above checks fail or cannot be run, AI must leave the PR for human review.
-
----
-
-#### 19.10.3 CI Preconditions (GitHub / Doppler)
-
-In addition to local checks, AI may only auto-approve/merge if **all** of the following are true:
-
-1. **Required Status Checks**
-
-   - GitHub branch protection for `main` requires **Doppler CI** and any other mandatory checks defined in §19.5.
-
-   - For the PR in question:
-
-     - All required checks show **SUCCESS**.
-
-     - No pending or failed **required** checks.
-
-2. **Merge State**
-
-   - GitHub reports merge state as **CLEAN** (no conflicts and merge allowed).
-
-AI must use either:
-
-- The GitHub CLI (`gh pr view --json`) or
-
-- The GitHub API (via tool)  
-
-to verify required checks and merge state **before** auto-merging.
-
-If CI status cannot be confirmed programmatically, AI must not auto-merge. It may still leave the PR open and unapproved, or approved but unmerged, depending on §19.10.4.
-
----
-
-#### 19.10.4 Auto-Approval Behaviour
-
-If §§19.10.1–19.10.3 are satisfied:
-
-1. The AI may submit a PR review with:
-
-   - State: **APPROVE**
-
-   - Body including at minimum:
-
-     - Summary of changes
-
-     - Confirmation that:
-
-       - `npm run build` and `npm test` passed locally
-
-       - Any migrations (if present) ran successfully
-
-       - No governance/locked files were modified
-
-       - All required CI checks are green
-
-2. If **any** precondition is not met:
-
-   - The AI must **not** approve the PR.
-
-   - Instead, it must add a **COMMENT** explaining which conditions failed and that human review is required.
-
----
-
-#### 19.10.5 Auto-Merge Behaviour
-
-The AI may auto-merge a PR only if:
-
-1. All conditions in §§19.10.1–19.10.4 are satisfied; **and**
-
-2. Branch protection indicates that:
-
-   - All required checks are passing.
-
-   - The PR is mergeable (no conflicts, no blockers).
-
-When auto-merging:
-
-1. Merge method:
-
-   - Default: **Squash merge** into `main`.
-
-2. Post-merge:
-
-   - Optionally delete the head branch if:
-
-     - Branch name is prefixed `feature/`, `fix/`, `chore/`, or `refactor/`; and
-
-     - There is no explicit "do not delete" label or note on the PR (e.g., `keep-branch`).
-
-If at any point GitHub rejects the merge (e.g. new commits added, CI re-running, new failures), the AI must **not** retry. It must instead leave a comment summarising the failure and require human intervention.
-
----
-
-#### 19.10.6 Audit Logging Requirements
-
-For every AI-approved and/or AI-merged PR, the AI must ensure an audit trail exists in:
-
-- `ops/doppler/AUDIT_LOG.txt` or
-
-- Another Ledger-approved audit file defined in §25
-
-Each entry must include at minimum:
-
-- UTC timestamp
-
-- PR number and title
-
-- Head branch and commit SHA
-
-- Summary of scope (one line)
-
-- Result:
-
-  - `AI_APPROVED_ONLY`
-
-  - `AI_APPROVED_AND_MERGED`
-
-- CI context (e.g. Doppler CI run ID, overall status)
-
-- A short note confirming that §19.10 preconditions were satisfied
-
-If the audit file cannot be updated for any reason, AI must **not** auto-merge.
-
----
-
-#### 19.10.7 Human Override
-
-At any time:
-
-- The Governance Lead may disable AI auto-approval/auto-merge by:
-
-  - Removing the agent's repository permissions, or
-
-  - Adding a `no-auto-merge` label to the PR.
-
-If a `no-auto-merge` label is present on the PR, the AI must not approve or merge it regardless of other conditions.
-
----
-
-**Summary:**  
-
-AI may auto-approve and auto-merge **only** when:
-
-- Scope is implementation-only,  
-
-- Local build/tests/migrations pass,  
-
-- CI is green,  
-
-- No locked/governance files are touched, and  
-
-- An audit entry is written.
-
-All other changes require human review.
+for post-merge audit.
 
 ---
 
@@ -1372,10 +977,6 @@ Applies to all guard registrations — manual, assisted, or via referrer.
 - `WELCOME_SMS_TEMPLATE_ID=tippy_guard_welcome_v1`
 - `WELCOME_SMS_LANGUAGE_AUTO=true`
 - Retry logic: 3 attempts
-
-#### Provider
-
-Welcome SMS is sent via SendGrid (or approved fallback provider, currently SendGrid as primary) per §25.2.
 
 #### Logging
 
@@ -1551,11 +1152,9 @@ All runtime secrets are stored in Doppler and injected at runtime via environmen
 
 #### Supabase
 
-- `SUPABASE_URL` (authoritative config for API endpoint)
-- `SUPABASE_ANON_KEY` (authoritative config for client-side access)
-- `SUPABASE_SERVICE_ROLE_KEY` (authoritative config for server-side operations)
-- `SUPABASE_DB_URL` (authoritative config for direct Postgres connection)
-- `SUPABASE_JWT_SECRET` (authoritative config for JWT signature verification)
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 #### Yoco
 
@@ -1563,14 +1162,9 @@ All runtime secrets are stored in Doppler and injected at runtime via environmen
 - `YOCO_SECRET_KEY`
 - `YOCO_WEBHOOK_SECRET`
 
-#### Messaging (SendGrid — Primary Provider)
+#### SMS (SendGrid/Twilio)
 
-- `SENDGRID_API_KEY` (authoritative config for messaging operations)
-- `SENDGRID_FROM_PHONE` (for SMS, where applicable)
-- `SENDGRID_FROM_EMAIL` (for email, where applicable)
-
-#### SMS (Twilio — Secondary/Fallback)
-
+- `SENDGRID_API_KEY`
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_PHONE_NUMBER`
@@ -1637,36 +1231,6 @@ All runtime secrets are stored in Doppler and injected at runtime via environmen
 - CI secret scanning (truffleHog, git-secrets)
 - Quarterly access reviews
 - Annual penetration testing
-
-### §25.11 — Approved Provider Environment Variable Names (Locked)
-
-**Status**: Locked — Final  
-**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
-
-Allowed names (no values) for provider configuration:
-
-- **Supabase**
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
-  - `SUPABASE_SERVICE_ROLE_KEY`
-  - `SUPABASE_JWT_SECRET`
-- **SendGrid**
-  - `SENDGRID_API_KEY`
-  - `SENDGRID_FROM_EMAIL`
-  - `SENDGRID_DEFAULT_TEMPLATE_ID`
-- **Twilio (if used)**
-  - `TWILIO_ACCOUNT_SID`
-  - `TWILIO_AUTH_TOKEN`
-  - `TWILIO_MESSAGING_SERVICE_SID`
-
-**Rules**
-
-1. Values MUST reside only in approved secrets managers (Doppler / GitHub Secrets) per §25.  
-2. Values MUST NOT be present in the repo, CI logs, telemetry, front-end bundles, or Ledger excerpts.  
-3. Any new provider requires a Ledger addendum updating §25.11 **before** use in production.  
-4. Variable names follow the uppercase, provider-prefixed pattern and are locked once listed.
-
-**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ### §25.1 — Doppler CI Tokens (Locked)
 
@@ -1759,38 +1323,6 @@ env:
 - ❌ Sharing token via unencrypted channels
 - ❌ Extending token lifetime beyond policy
 - ❌ Using token for manual operations
-
-**This section is LOCKED. No modifications without Ledger amendment process.**
-
-### §25.2 — Official Messaging Provider — SendGrid (Locked)
-
-**Status**: Locked — Final  
-**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
-
-#### Overview
-
-SendGrid is the single, primary provider for all transactional messaging in Tippy.
-
-#### Core Requirements
-
-- SendGrid is the primary provider for:
-  - Welcome SMS to guards per §24.3.
-  - All transactional email communication configured for Tippy.
-
-- SMS and email configuration is managed via:
-  - `SENDGRID_API_KEY` (required)
-  - `SENDGRID_FROM_PHONE` (for SMS, where applicable)
-  - `SENDGRID_FROM_EMAIL` (for email, where applicable)
-  - `WELCOME_SMS_TEMPLATE_ID = tippy_guard_welcome_v1` (per §24.3)
-
-- Twilio or other providers may be used only as explicit secondary/fallback providers via future Ledger amendments.
-
-- All SMS events must still be logged to `sms_events` per §24.3 with `msisdn_hash` and masked MSISDN, regardless of provider.
-
-#### Provider Hierarchy
-
-1. **Primary**: SendGrid (locked as of this amendment)
-2. **Secondary/Fallback**: Twilio (if configured, requires Ledger amendment to activate)
 
 **This section is LOCKED. No modifications without Ledger amendment process.**
 
