@@ -10,10 +10,12 @@
 - [§2 — Roles & Access](#2--roles--access)
 - [§3 — Config (Admin-Editable Defaults)](#3--config-admin-editable-defaults)
 - [§4 — Data Model (Primary Fields)](#4--data-model-primary-fields)
+  - [§4.1 — Primary Data Platform — Supabase (Locked)](#41--primary-data-platform--supabase-locked)
 - [§5 — Fees & Calculations](#5--fees--calculations)
 - [§6 — Key Workflows](#6--key-workflows)
 - [§7 — API Surface (Edge Functions)](#7--api-surface-edge-functions)
 - [§8 — RLS / Security](#8--rls--security)
+  - [§8.1 — Authentication Provider — Supabase Auth (Locked)](#81--authentication-provider--supabase-auth-locked)
 - [§9 — Payouts (Weekly)](#9--payouts-weekly)
 - [§10 — Referrals (Locked)](#10--referrals-locked)
 - [§11 — Copy / Brand Text (User-Facing)](#11--copy--brand-text-user-facing)
@@ -38,6 +40,7 @@
   - [§24.5 — Bulk QR Generation & Print-Ready Cards (Locked)](#245--bulk-qr-generation--print-ready-cards-locked)
 - [§25 — Environment, Credentials & Secrets Management (Locked)](#25--environment-credentials--secrets-management-locked)
   - [§25.1 — Doppler CI Tokens (Locked)](#251--doppler-ci-tokens-locked)
+  - [§25.2 — Official Messaging Provider — SendGrid (Locked)](#252--official-messaging-provider--sendgrid-locked)
 - [§26 — Guard Registration Accessibility & Device Independence (Locked)](#26--guard-registration-accessibility--device-independence-locked)
 - [§27 — Brand Naming & Architecture (Locked)](#27--brand-naming--architecture-locked)
 - [§28 — Official Logo Lock (Locked)](#28--official-logo-lock-locked)
@@ -219,6 +222,31 @@ All sensitive events logged immutably.
 
 Key/value configuration store.
 
+### §4.1 — Primary Data Platform — Supabase (Locked)
+
+**Status**: Locked — Final  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+#### Overview
+
+The authoritative operational database for Tippy is Supabase Postgres.
+
+#### Core Requirements
+
+- All persistent entities defined in §4 (guards, referrers, payments, referrals, payouts, sms_events, audit_log, etc.) live in Supabase-managed Postgres schemas.
+
+- Supabase's Row-Level Security (RLS) engine is the canonical enforcement mechanism for per-role and per-user data access as defined in §2 and §8.
+
+- Any future data stores (analytics, caching, warehousing) must treat Supabase Postgres as the system-of-record.
+
+#### Configuration
+
+- Database connection via `SUPABASE_DB_URL` (direct Postgres connection string).
+- Supabase-managed Postgres is the single source of truth for all transactional data.
+- All migrations and schema changes must be applied to Supabase Postgres.
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
+
 ---
 
 ## §5 — Fees & Calculations
@@ -332,6 +360,33 @@ Push notification if user stays within:
 - Admin: full system access
 - MSISDN masked except for owner/admin
 - No OTP for MSISDN change (admin-verifiable)
+
+### §8.1 — Authentication Provider — Supabase Auth (Locked)
+
+**Status**: Locked — Final  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+#### Overview
+
+All end-user and referrer authentication is provided by Supabase Auth.
+
+#### Core Requirements
+
+- Tippy trusts only Supabase-issued JWTs signed with the configured `SUPABASE_JWT_SECRET`.
+
+- The `auth.uid()` value from Supabase is mapped to `users.id` in the Tippy schema and is the basis for RLS policies.
+
+- Roles (admin, referrer, guard, internal) are resolved from the `users` table and/or JWT claims exactly as implemented in P1.6.
+
+- Any alternative identity providers must federate into Supabase Auth rather than bypassing it.
+
+#### Configuration
+
+- Authentication endpoints managed by Supabase Auth.
+- JWT validation uses `SUPABASE_JWT_SECRET` for signature verification.
+- User sessions and tokens are managed by Supabase Auth infrastructure.
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ---
 
@@ -978,6 +1033,10 @@ Applies to all guard registrations — manual, assisted, or via referrer.
 - `WELCOME_SMS_LANGUAGE_AUTO=true`
 - Retry logic: 3 attempts
 
+#### Provider
+
+Welcome SMS is sent via SendGrid (or approved fallback provider, currently SendGrid as primary) per §25.2.
+
 #### Logging
 
 All SMS events logged to `sms_events` (masked phone numbers).
@@ -1152,9 +1211,11 @@ All runtime secrets are stored in Doppler and injected at runtime via environmen
 
 #### Supabase
 
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_URL` (authoritative config for API endpoint)
+- `SUPABASE_ANON_KEY` (authoritative config for client-side access)
+- `SUPABASE_SERVICE_ROLE_KEY` (authoritative config for server-side operations)
+- `SUPABASE_DB_URL` (authoritative config for direct Postgres connection)
+- `SUPABASE_JWT_SECRET` (authoritative config for JWT signature verification)
 
 #### Yoco
 
@@ -1162,9 +1223,14 @@ All runtime secrets are stored in Doppler and injected at runtime via environmen
 - `YOCO_SECRET_KEY`
 - `YOCO_WEBHOOK_SECRET`
 
-#### SMS (SendGrid/Twilio)
+#### Messaging (SendGrid — Primary Provider)
 
-- `SENDGRID_API_KEY`
+- `SENDGRID_API_KEY` (authoritative config for messaging operations)
+- `SENDGRID_FROM_PHONE` (for SMS, where applicable)
+- `SENDGRID_FROM_EMAIL` (for email, where applicable)
+
+#### SMS (Twilio — Secondary/Fallback)
+
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_PHONE_NUMBER`
@@ -1323,6 +1389,38 @@ env:
 - ❌ Sharing token via unencrypted channels
 - ❌ Extending token lifetime beyond policy
 - ❌ Using token for manual operations
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
+
+### §25.2 — Official Messaging Provider — SendGrid (Locked)
+
+**Status**: Locked — Final  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+#### Overview
+
+SendGrid is the single, primary provider for all transactional messaging in Tippy.
+
+#### Core Requirements
+
+- SendGrid is the primary provider for:
+  - Welcome SMS to guards per §24.3.
+  - All transactional email communication configured for Tippy.
+
+- SMS and email configuration is managed via:
+  - `SENDGRID_API_KEY` (required)
+  - `SENDGRID_FROM_PHONE` (for SMS, where applicable)
+  - `SENDGRID_FROM_EMAIL` (for email, where applicable)
+  - `WELCOME_SMS_TEMPLATE_ID = tippy_guard_welcome_v1` (per §24.3)
+
+- Twilio or other providers may be used only as explicit secondary/fallback providers via future Ledger amendments.
+
+- All SMS events must still be logged to `sms_events` per §24.3 with `msisdn_hash` and masked MSISDN, regardless of provider.
+
+#### Provider Hierarchy
+
+1. **Primary**: SendGrid (locked as of this amendment)
+2. **Secondary/Fallback**: Twilio (if configured, requires Ledger amendment to activate)
 
 **This section is LOCKED. No modifications without Ledger amendment process.**
 
