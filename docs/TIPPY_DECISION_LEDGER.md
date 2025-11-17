@@ -9,11 +9,13 @@
 - [§1 — System Overview](#1--system-overview)
 - [§2 — Roles & Access](#2--roles--access)
 - [§3 — Config (Admin-Editable Defaults)](#3--config-admin-editable-defaults)
+  - [§3.1 — Platform Infrastructure Providers (Locked)](#31--platform-infrastructure-providers-locked)
 - [§4 — Data Model (Primary Fields)](#4--data-model-primary-fields)
   - [§4.1 — Primary Data Platform — Supabase (Locked)](#41--primary-data-platform--supabase-locked)
 - [§5 — Fees & Calculations](#5--fees--calculations)
 - [§6 — Key Workflows](#6--key-workflows)
 - [§7 — API Surface (Edge Functions)](#7--api-surface-edge-functions)
+  - [§7.1 — Messaging & Notifications Providers (Locked)](#71--messaging--notifications-providers-locked)
 - [§8 — RLS / Security](#8--rls--security)
   - [§8.1 — Authentication Provider — Supabase Auth (Locked)](#81--authentication-provider--supabase-auth-locked)
 - [§9 — Payouts (Weekly)](#9--payouts-weekly)
@@ -41,6 +43,7 @@
 - [§25 — Environment, Credentials & Secrets Management (Locked)](#25--environment-credentials--secrets-management-locked)
   - [§25.1 — Doppler CI Tokens (Locked)](#251--doppler-ci-tokens-locked)
   - [§25.2 — Official Messaging Provider — SendGrid (Locked)](#252--official-messaging-provider--sendgrid-locked)
+  - [§25.11 — Approved Provider Environment Variable Names (Locked)](#2511--approved-provider-environment-variable-names-locked)
 - [§26 — Guard Registration Accessibility & Device Independence (Locked)](#26--guard-registration-accessibility--device-independence-locked)
 - [§27 — Brand Naming & Architecture (Locked)](#27--brand-naming--architecture-locked)
 - [§28 — Official Logo Lock (Locked)](#28--official-logo-lock-locked)
@@ -165,6 +168,25 @@ AUTO_GENERATE_WEEKLY_PAYOUT = true
 
 REFERENCE_PREFIX = "TPY"
 ```
+
+### §3.1 — Platform Infrastructure Providers (Locked)
+
+**Status**: Locked — Final  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+- **Primary Operational Database & Auth Provider:** **Supabase**
+- **Database Engine:** **PostgreSQL**
+- **Usage:**
+  - Primary data store for guards, referrers, tips, payouts, QR mappings, audit logs, and any Phase 1–3 data model.
+  - Source of truth for all schema objects defined in §§4, 6, 7, 24, and 25.
+  - Supabase Auth issues JWT tokens consumed by the Tippy backend per §8.1.
+- **Governance:**
+  - All access MUST honor Supabase Row Level Security (RLS) policies defined in §§2, 8, 13.
+  - Service-role keys are strictly forbidden on public or user-facing endpoints.
+  - All Supabase credentials (anon, service role, JWT secret, DB URL) MUST live in the secrets manager per §25—never in code, CI logs, or the Ledger.
+- **Reference:** See §4.1 for data platform details and §8.1 for authentication specifics.
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ---
 
@@ -350,6 +372,22 @@ Push notification if user stays within:
 - `POST /admin/settings/set`
 - `POST /admin/qr/bulk-generate` (locked Tier-3)
 - `POST /admin/qr/export`
+
+### §7.1 — Messaging & Notifications Providers (Locked)
+
+**Status**: Locked — Final  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+- **Transactional Email Provider:** **SendGrid**
+  - **Usage:** All transactional and governance email (referrer invitations, internal alerts, payout notices, audit notifications). Templates referenced by ID only.
+- **SMS Provider Path:** **SendGrid SMS** or **Twilio SMS gateway**
+  - **Usage:** Guard Welcome SMS per §24.3, referrer activation flows per §24.4, and any future SMS workflow explicitly defined in the Ledger.
+- **Governance:**
+  - No plaintext phone numbers or MSISDNs in logs; masking/hashing per §§13, 24.3, 24.4, 25.
+  - All API keys, messaging service IDs, and template IDs live only in the secrets manager per §25.
+  - SMTP passwords / API keys MUST NOT appear in the Ledger, code, or CI logs.
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ---
 
@@ -1297,6 +1335,36 @@ All runtime secrets are stored in Doppler and injected at runtime via environmen
 - CI secret scanning (truffleHog, git-secrets)
 - Quarterly access reviews
 - Annual penetration testing
+
+### §25.11 — Approved Provider Environment Variable Names (Locked)
+
+**Status**: Locked — Final  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+Allowed names (no values) for provider configuration:
+
+- **Supabase**
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `SUPABASE_JWT_SECRET`
+- **SendGrid**
+  - `SENDGRID_API_KEY`
+  - `SENDGRID_FROM_EMAIL`
+  - `SENDGRID_DEFAULT_TEMPLATE_ID`
+- **Twilio (if used)**
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_MESSAGING_SERVICE_SID`
+
+**Rules**
+
+1. Values MUST reside only in approved secrets managers (Doppler / GitHub Secrets) per §25.  
+2. Values MUST NOT be present in the repo, CI logs, telemetry, front-end bundles, or Ledger excerpts.  
+3. Any new provider requires a Ledger addendum updating §25.11 **before** use in production.  
+4. Variable names follow the uppercase, provider-prefixed pattern and are locked once listed.
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ### §25.1 — Doppler CI Tokens (Locked)
 
