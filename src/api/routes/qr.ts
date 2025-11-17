@@ -202,37 +202,53 @@ router.post(
       // Per Ledger §9: Fee deducted from next payout
       // Per Ledger §9: Line items include QR_REPLACEMENT type
       // 
-      // Note: Since payout_batch_items requires a payout_batch_id, we create a pending batch
-      // that will be merged into the next actual payout batch during payout generation.
-      // The payout generation logic should:
-      // 1. Find all pending QR_REPLACEMENT items for guards in the payout period
-      // 2. Include them in the payout batch with negative net_amount_zar_cents
-      // 3. Subtract the fee from the guard's payout amount
+      // Strategy: Find or create a "pending fees" batch that accumulates all pending QR replacement fees.
+      // During payout generation, the system will:
+      // 1. Find all pending QR_REPLACEMENT items for guards eligible for payout
+      // 2. Include them in the payout batch (deducting from guard's payout amount)
+      // 3. Update the items to reference the actual payout batch
       
-      const pendingBatchId = randomUUID();
-      const pendingBatchNumber = `TPY-QR-FEE-PENDING-${Date.now()}`;
-      
-      // Create a pending batch for QR replacement fees
-      // This batch will be processed during the next payout generation
-      const { error: pendingBatchError } = await supabase
+      // Find existing "pending fees" batch or create a new one
+      // Use a special batch number pattern to identify pending fee batches
+      // Note: Supabase PostgREST uses .ilike() for pattern matching (case-insensitive LIKE)
+      const { data: existingPendingBatch } = await supabase
         .from('payout_batches')
-        .insert({
-          id: pendingBatchId,
-          batch_number: pendingBatchNumber,
-          period_start_date: new Date().toISOString().split('T')[0],
-          period_end_date: new Date().toISOString().split('T')[0],
-          status: 'pending',
-        });
+        .select('id')
+        .eq('status', 'pending')
+        .ilike('batch_number', 'TPY-QR-FEE-PENDING-%')
+        .maybeSingle(); // Use maybeSingle() to handle case where no batch exists
 
-      if (pendingBatchError) {
-        console.error("[qr] Error creating pending batch for QR replacement fee", pendingBatchError?.message);
-        // Non-blocking: continue even if batch creation fails (fee can be applied later during payout generation)
+      let pendingBatchId: string;
+      
+      if (existingPendingBatch) {
+        pendingBatchId = existingPendingBatch.id;
       } else {
-        // Create payout_batch_item for QR replacement fee
-        // Per Ledger §9: QR_REPLACEMENT item type
-        // The amount represents a deduction that will be subtracted from the guard's next payout
-        // Note: amount_zar_cents must be > 0 per schema, so we store the fee amount as positive
-        // The payout generation logic should subtract this from the guard's payout
+        // Create a new pending batch for QR replacement fees
+        pendingBatchId = randomUUID();
+        const pendingBatchNumber = `TPY-QR-FEE-PENDING-${Date.now()}`;
+        
+        const { error: pendingBatchError } = await supabase
+          .from('payout_batches')
+          .insert({
+            id: pendingBatchId,
+            batch_number: pendingBatchNumber,
+            period_start_date: new Date().toISOString().split('T')[0],
+            period_end_date: new Date().toISOString().split('T')[0],
+            status: 'pending',
+          });
+
+        if (pendingBatchError) {
+          console.error("[qr] Error creating pending batch for QR replacement fee", pendingBatchError?.message);
+          // Non-blocking: continue even if batch creation fails (fee can be applied later during payout generation)
+        }
+      }
+
+      // Create payout_batch_item for QR replacement fee
+      // Per Ledger §9: QR_REPLACEMENT item type
+      // The amount represents a deduction that will be subtracted from the guard's next payout
+      // Note: amount_zar_cents must be > 0 per schema, so we store the fee amount as positive
+      // The payout generation logic should subtract this from the guard's payout amount
+      if (pendingBatchId) {
         const { error: feeItemError } = await supabase
           .from('payout_batch_items')
           .insert({

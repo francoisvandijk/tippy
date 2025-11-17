@@ -49,13 +49,23 @@ const mockSupabaseFrom = (dbModule.supabase as any).from;
 const createSelectChain = (result: { data: any; error: any }) => {
   const inChain = {
     single: vi.fn(() => Promise.resolve(result)),
+    maybeSingle: vi.fn(() => Promise.resolve(result)),
   };
   
   const eqChain = {
     single: vi.fn(() => Promise.resolve(result)),
+    maybeSingle: vi.fn(() => Promise.resolve(result)),
     in: vi.fn(() => inChain),
+    ilike: vi.fn(() => ({
+      maybeSingle: vi.fn(() => Promise.resolve(result)),
+      single: vi.fn(() => Promise.resolve(result)),
+    })),
     eq: vi.fn(() => ({
       single: vi.fn(() => Promise.resolve(result)),
+      maybeSingle: vi.fn(() => Promise.resolve(result)),
+      ilike: vi.fn(() => ({
+        maybeSingle: vi.fn(() => Promise.resolve(result)),
+      })),
     })),
   };
   
@@ -223,104 +233,131 @@ describe('POST /qr/reassign', () => {
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
         
-        // Call 1: User lookup for auth
-        if (table === 'users' && callCount === 1) {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                single: vi.fn(() =>
-                  Promise.resolve({
-                    data: { role: 'guard' },
-                    error: null,
-                  })
-                ),
+        // Call 1: User lookup for auth (from auth middleware)
+        if (table === 'users') {
+          if (callCount === 1) {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: { role: 'guard' },
+                      error: null,
+                    })
+                  ),
+                })),
               })),
-            })),
-          };
+            };
+          }
         }
         
         // Call 2: Guard lookup
-        if (table === 'guards' && callCount === 2) {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                single: vi.fn(() =>
-                  Promise.resolve({
-                    data: { id: guardId, display_name: 'Test Guard', status: 'active' },
-                    error: null,
-                  })
-                ),
+        if (table === 'guards') {
+          if (callCount === 2) {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: { id: guardId, display_name: 'Test Guard', status: 'active' },
+                      error: null,
+                    })
+                  ),
+                })),
               })),
-            })),
-          };
+            };
+          }
         }
         
         // Call 3: Find current QR
-        if (table === 'qr_codes' && callCount === 3) {
-          const inChain = {
-            single: vi.fn(() =>
+        if (table === 'qr_codes') {
+          if (callCount === 3) {
+            const inChain = {
+              single: vi.fn(() =>
+                Promise.resolve({
+                  data: {
+                    id: currentQrId,
+                    code: 'QR-OLD-123',
+                    short_code: 'OLD123',
+                    status: 'active',
+                  },
+                  error: null,
+                })
+              ),
+            };
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  in: vi.fn(() => inChain),
+                })),
+              })),
+            };
+          }
+          
+          // Call 4: Find target QR
+          if (callCount === 4) {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: {
+                        id: newQrId,
+                        code: 'QR-NEW-456',
+                        short_code: 'NEW456',
+                        status: 'unassigned',
+                        assigned_guard_id: null,
+                      },
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            };
+          }
+          
+          // Call 5: Update old QR
+          if (callCount === 5) {
+            return createUpdateChain();
+          }
+          
+          // Call 6: Update new QR
+          if (callCount === 6) {
+            return createUpdateChain();
+          }
+        }
+        
+        // Call 7: Check for existing pending batch
+        if (table === 'payout_batches' && callCount === 7) {
+          const ilikeChain = {
+            maybeSingle: vi.fn(() =>
               Promise.resolve({
-                data: {
-                  id: currentQrId,
-                  code: 'QR-OLD-123',
-                  short_code: 'OLD123',
-                  status: 'active',
-                },
+                data: null, // No existing batch, will create new one
                 error: null,
               })
             ),
           };
+          const eqChain = {
+            ilike: vi.fn(() => ilikeChain),
+          };
           return {
             select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                in: vi.fn(() => inChain),
-              })),
+              eq: vi.fn(() => eqChain),
             })),
           };
         }
         
-        // Call 4: Find target QR
-        if (table === 'qr_codes' && callCount === 4) {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                single: vi.fn(() =>
-                  Promise.resolve({
-                    data: {
-                      id: newQrId,
-                      code: 'QR-NEW-456',
-                      short_code: 'NEW456',
-                      status: 'unassigned',
-                      assigned_guard_id: null,
-                    },
-                    error: null,
-                  })
-                ),
-              })),
-            })),
-          };
-        }
-        
-        // Call 5: Update old QR
-        if (table === 'qr_codes' && callCount === 5) {
-          return createUpdateChain();
-        }
-        
-        // Call 6: Update new QR
-        if (table === 'qr_codes' && callCount === 6) {
-          return createUpdateChain();
-        }
-        
-        // Call 7: Create pending batch
-        if (table === 'payout_batches' && callCount === 7) {
+        // Call 8: Create pending batch (if no existing one)
+        if (table === 'payout_batches' && callCount === 8) {
           return createInsertChain({ data: { id: 'batch-123' }, error: null });
         }
         
-        // Call 8: Create fee item
-        if (table === 'payout_batch_items' && callCount === 8) {
+        // Call 9: Create fee item
+        if (table === 'payout_batch_items' && callCount === 9) {
           return createInsertChain({ data: { id: 'item-123' }, error: null });
         }
         
+        // Default fallback
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
@@ -435,10 +472,27 @@ describe('POST /qr/reassign', () => {
         }
         
         if (table === 'payout_batches' && callCount === 7) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                ilike: vi.fn(() => ({
+                  maybeSingle: vi.fn(() =>
+                    Promise.resolve({
+                      data: null, // No existing batch, will create new one
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'payout_batches' && callCount === 8) {
           return createInsertChain({ data: { id: 'batch-123' }, error: null });
         }
         
-        if (table === 'payout_batch_items' && callCount === 8) {
+        if (table === 'payout_batch_items' && callCount === 9) {
           return createInsertChain({ data: { id: 'item-123' }, error: null });
         }
         
@@ -1061,10 +1115,27 @@ describe('POST /qr/reassign', () => {
         }
         
         if (table === 'payout_batches' && callCount === 7) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                ilike: vi.fn(() => ({
+                  maybeSingle: vi.fn(() =>
+                    Promise.resolve({
+                      data: null, // No existing batch, will create new one
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'payout_batches' && callCount === 8) {
           return createInsertChain({ data: { id: 'batch-123' }, error: null });
         }
         
-        if (table === 'payout_batch_items' && callCount === 8) {
+        if (table === 'payout_batch_items' && callCount === 9) {
           return createInsertChain({ data: { id: 'item-123' }, error: null });
         }
         
