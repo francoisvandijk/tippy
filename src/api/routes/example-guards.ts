@@ -6,7 +6,6 @@
 
 import { Router, Request, Response } from 'express';
 import { requireAuth, requireRole } from '../../lib/auth';
-import { supabase } from '../../lib/db';
 
 const router = Router();
 
