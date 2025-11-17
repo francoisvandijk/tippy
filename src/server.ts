@@ -4,6 +4,13 @@
 import express from 'express';
 import paymentsRouter from './api/routes/payments';
 import yocoWebhookRouter from './api/routes/yoco-webhook';
+import guardsRouter from './api/routes/guards';
+import qrRouter from './api/routes/qr';
+import referralsRouter from './api/routes/referrals';
+import referrersRouter from './api/routes/referrers';
+import adminQrRouter from './api/routes/admin/qr';
+import adminPayoutsRouter from './api/routes/admin/payouts';
+import adminSettingsRouter from './api/routes/admin/settings';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,8 +31,22 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
+// Public/User endpoints (Ledger §7)
 app.use('/payments', paymentsRouter);
 app.use('/payments', yocoWebhookRouter);
+
+// Guard endpoints (Ledger §7)
+app.use('/guards', guardsRouter);
+app.use('/qr', qrRouter);
+
+// Referral endpoints (Ledger §7)
+app.use('/referrals', referralsRouter);
+app.use('/referrers', referrersRouter);
+
+// Admin endpoints (Ledger §7)
+app.use('/admin/qr', adminQrRouter);
+app.use('/admin/payouts', adminPayoutsRouter);
+app.use('/admin/settings', adminSettingsRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

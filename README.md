@@ -17,8 +17,28 @@ This implementation provides the core payment processing functionality as define
 
 ### API Endpoints
 
+Per Ledger §7 — API Surface (Edge Functions):
+
+#### Public/User Endpoints
 - `POST /payments/create` — Create a new payment/tip
 - `POST /payments/webhook` — Yoco webhook handler
+
+#### Guard Endpoints
+- `POST /qr/reassign` — Guard reassigns to a new QR code
+- `GET /guards/me` — Get guard profile and earnings summary
+
+#### Referral Endpoints
+- `POST /referrals/create` — Create a referral record (referrer signs up guard)
+- `GET /referrers/earnings/summary` — Get referrer's accrued earnings summary
+- `GET /referrers/referrals` — List referred guards and their status
+
+#### Admin Endpoints
+- `POST /admin/qr/assign` — Admin assigns QR code to guard
+- `POST /admin/qr/bulk-generate` — Create batch of QR codes (Tier-3)
+- `POST /admin/payouts/generate` — Trigger payout batch creation
+- `POST /admin/settings/set` — Update app setting value
+
+See `docs/API.md` (if exists) for detailed API documentation.
 
 ### Environment Variables
 
@@ -80,13 +100,18 @@ npm run test:coverage
 
 This implementation satisfies:
 
-- **§4**: Data Model (payments table)
+- **§4**: Data Model (all core tables: users, guards, qr_codes, referrals, payouts, etc.)
 - **§5**: Fees & Calculations (automatic fee calculation)
-- **§6**: Key Workflows (User Tipping workflow)
-- **§7**: API Surface (payment endpoints)
-- **§13**: POPIA & Security (no PII logging)
+- **§6**: Key Workflows (User Tipping, QR Reassignment)
+- **§7**: API Surface (12/12 required endpoints implemented)
+- **§10**: Referrals (basic CRUD, milestone logic deferred to P1.4)
+- **§12**: Logging & Error Taxonomy (VALIDATION_ERROR, PROCESSOR_ERROR, etc.)
+- **§13**: POPIA & Security (phone masking, no PII logging)
 - **§15**: Environments & Deployment (env-based config)
+- **§24.4**: Referrer Activation & Guard Registration (basic endpoints)
 - **§25**: Secrets Management (Doppler integration)
+
+**Note**: Full business logic for referrals (milestone triggers, T+30 reversal) and payouts (computation, CashSend) is deferred to P1.4 and P1.5 respectively.
 
 ---
 
