@@ -79,6 +79,10 @@
 
 ✅ All Phase 2 implementation and close-out tasks completed.
 
+### Additional Verification Items
+1. Verify why §19.10 is missing from main despite PR #9 being merged
+2. Re-verify Ledger content matches authoritative version
+
 ---
 
 *This document is governed by Tippy Decision Ledger v1.0 (Final). Ledger = Law — no assumptions, no deviations.*

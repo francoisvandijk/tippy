@@ -1,25 +1,39 @@
 // Tests for authentication and authorization
 // Ledger Reference: §2 (Roles & Access), §8 (RLS / Security), §12 (Error Taxonomy)
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { vi } from 'vitest';
+
+// Mock Supabase - MUST be before all imports
+vi.mock('../../src/lib/db', () => {
+  const mockSupabaseFrom = vi.fn();
+  return {
+    supabase: {
+      from: mockSupabaseFrom,
+    },
+  };
+});
+
+// Mock YocoClient - MUST be before all imports (server imports payments which uses YocoClient)
+vi.mock('../../src/lib/yoco', () => {
+  return {
+    YocoClient: class {
+      createCharge = vi.fn().mockResolvedValue({
+        id: 'ch_test_123',
+        status: 'success',
+      });
+      verifyWebhookSignature = vi.fn().mockReturnValue(true);
+    },
+  };
+});
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../../src/server';
 import jwt from 'jsonwebtoken';
+import * as dbModule from '../../src/lib/db';
 
-// Mock Supabase
-const mockSupabase = {
-  from: vi.fn(() => ({
-    select: vi.fn(() => ({
-      eq: vi.fn(() => ({
-        single: vi.fn(),
-      })),
-    })),
-  })),
-};
-
-vi.mock('../../src/lib/db', () => ({
-  supabase: mockSupabase,
-}));
+// Get the mocked supabase for test-specific mocks
+const mockSupabaseFrom = (dbModule.supabase as any).from;
 
 // Test JWT secret (for generating test tokens)
 const TEST_JWT_SECRET = 'test-secret-key-for-testing-only';
@@ -136,36 +150,89 @@ describe('Authentication Middleware', () => {
     it('should allow guard role to access guard endpoints', async () => {
       const guardToken = generateTestToken('guard-123', 'guard');
 
-      // Mock user lookup
-      mockSupabase.from.mockReturnValueOnce({
-        select: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            single: vi.fn(() =>
-              Promise.resolve({
-                data: { role: 'guard' },
-                error: null,
-              })
-            ),
-          })),
-        })),
+      // Call sequence: guards -> qr_codes -> payments
+      let callCount = 0;
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        callCount++;
+        
+        if (table === 'guards' && callCount === 1) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: 'guard-123',
+                      display_name: 'Test Guard',
+                      status: 'active',
+                      lifetime_gross_tips: 10000,
+                      lifetime_net_tips: 9000,
+                      lifetime_payouts: 0,
+                      language: 'en',
+                      created_at: '2025-01-01T00:00:00Z',
+                      activated_at: '2025-01-01T00:00:00Z',
+                    },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'qr_codes' && callCount === 2) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: null,
+                      error: { code: 'PGRST116' },
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'payments' && callCount === 3) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  order: vi.fn(() => ({
+                    limit: vi.fn(() =>
+                      Promise.resolve({
+                        data: [],
+                        error: null,
+                      })
+                    ),
+                  })),
+                })),
+              })),
+            })),
+          };
+        }
+        
+        throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
-      // This test will pass if the endpoint exists and accepts guard role
       const response = await request(app)
         .get('/guards/me')
         .set('Authorization', `Bearer ${guardToken}`)
         .query({ guard_id: 'guard-123' });
 
-      // If endpoint exists: 200 or 400 (validation)
-      // If endpoint doesn't exist: 404
-      expect([200, 400, 404]).toContain(response.status);
+      expect(response.status).toBe(200);
+      expect(response.body.id).toBe('guard-123');
     });
 
     it('should deny referrer role from accessing admin endpoints', async () => {
       const referrerToken = generateTestToken('referrer-123', 'referrer');
 
       // Mock user lookup
-      mockSupabase.from.mockReturnValueOnce({
+      mockSupabaseFrom.mockReturnValueOnce({
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
             single: vi.fn(() =>
@@ -193,7 +260,7 @@ describe('Authentication Middleware', () => {
       const guardToken = generateTestToken('guard-123', 'guard');
 
       // Mock user lookup
-      mockSupabase.from.mockReturnValueOnce({
+      mockSupabaseFrom.mockReturnValueOnce({
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
             single: vi.fn(() =>
