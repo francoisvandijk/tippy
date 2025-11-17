@@ -27,6 +27,7 @@
 - [§19 — Table / Endpoint Index](#19--table--endpoint-index)
   - [§19.5 — Doppler CI Workflow (Locked)](#195--doppler-ci-workflow-locked)
   - [§19.9 — Phase Close-Out Process (Locked)](#199--phase-close-out-process-locked)
+  - [§19.10 — AI Auto-Approval Exception (Locked)](#1910--ai-auto-approval-exception-locked)
 - [§20 — Reserved](#20--reserved)
 - [§21 — Reserved](#21--reserved)
 - [§22 — Reserved](#22--reserved)
@@ -830,6 +831,68 @@ Locked.
 Establishes a repeatable, immutable governance protocol for every development phase.
 
 **This section is LOCKED. No modifications without Ledger amendment process.**
+
+### §19.10 — AI Auto-Approval Exception (Locked)
+
+**Scope:**  
+
+Defines when an AI agent may self-approve a PR without a human Governance Trio review, while remaining compliant with all Ledger-locking rules.
+
+**19.10.1 Conditions for Auto-Approval**  
+
+An AI agent may self-approve a PR **only if all conditions are true**:  
+
+1. The PR modifies **no source code**, only governance files.  
+
+2. Changes are strictly additive and do not alter or remove any existing locked section.  
+
+3. CI (Doppler) passes on the PR branch and on main.  
+
+4. Immutable audit logs (§25.x) are updated automatically.  
+
+5. The agent performs a full §19.9 verification before approval.
+
+**19.10.2 Forbidden Auto-Approval Cases**  
+
+AI agents may *not* auto-approve PRs that:  
+
+- Modify any code, scripts, migrations, or workflows.  
+
+- Change or delete locked sections.  
+
+- Introduce secrets, tokens, or environment variables.  
+
+- Affect POPIA-protected data models.  
+
+- Are part of a Phase close-out requiring Governance Trio sign-off.
+
+**19.10.3 Required Audit Entries**  
+
+For every auto-approval, the agent must record:  
+
+- PR number  
+
+- Commit hash  
+
+- Timestamp  
+
+- Ledger sections validated  
+
+- CI run ID  
+
+- Auto-approval justification
+
+**19.10.4 Security & Oversight**  
+
+Auto-approved PRs are automatically routed to:  
+
+- ENGINEERING_LEAD_GH  
+
+- COMPLIANCE_OFFICER_GH  
+
+- DEVOPS_LEAD_GH  
+
+for post-merge audit.
 
 ---
 
