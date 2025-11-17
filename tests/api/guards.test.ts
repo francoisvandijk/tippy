@@ -14,9 +14,13 @@ vi.mock('../../src/lib/db', () => {
 });
 
 // Mock SMS service - MUST be before all imports
-vi.mock('../../src/lib/sms', () => ({
-  sendWelcomeSms: vi.fn(() => Promise.resolve({ success: true, smsEventId: 'sms-123' })),
-}));
+vi.mock('../../src/lib/sms', () => {
+  const mockSendWelcomeSms = vi.fn(() => Promise.resolve({ success: true, smsEventId: 'sms-123' }));
+  return {
+    sendWelcomeSms: mockSendWelcomeSms,
+    __mockSendWelcomeSms: mockSendWelcomeSms, // Export for test access
+  };
+});
 
 // Mock YocoClient - MUST be before all imports (server imports payments which uses YocoClient)
 vi.mock('../../src/lib/yoco', () => {
@@ -36,6 +40,17 @@ import request from 'supertest';
 import app from '../../src/server';
 import jwt from 'jsonwebtoken';
 import * as dbModule from '../../src/lib/db';
+import * as smsModule from '../../src/lib/sms';
+import * as auditModule from '../../src/lib/audit';
+
+// Mock audit logging - MUST be before all imports
+vi.mock('../../src/lib/audit', () => {
+  const mockLogAuditEvent = vi.fn(() => Promise.resolve());
+  return {
+    logAuditEvent: mockLogAuditEvent,
+    __mockLogAuditEvent: mockLogAuditEvent, // Export for test access
+  };
+});
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
@@ -654,6 +669,259 @@ describe('POST /guards/register', () => {
       expect(guardInsertData).toHaveProperty('msisdn_hash');
       // msisdn_hash should be a 64-character hex string (SHA256)
       expect(guardInsertData.msisdn_hash).toMatch(/^[a-f0-9]{64}$/i);
+    });
+  });
+
+  describe('Error handling', () => {
+    it('should handle SMS failure gracefully and still create guard', async () => {
+      const adminToken = generateTestToken('admin-123', 'admin');
+      
+      // Mock sendWelcomeSms to throw
+      (smsModule as any).__mockSendWelcomeSms.mockRejectedValueOnce(new Error('SMS provider unavailable'));
+
+      let callCount = 0;
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        callCount++;
+        
+        if (table === 'guards' && callCount === 1) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: null,
+                    error: { code: 'PGRST116' },
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'users' && callCount === 2) {
+          return createInsertNoSelect();
+        }
+        
+        if (table === 'guards' && callCount === 3) {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: 'guard-456' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'guard_registration_events' && callCount === 4) {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: 'event-123' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'guard_registration_events' && callCount === 5) {
+          return createUpdateChain();
+        }
+        
+        if (table === 'audit_log' && callCount === 6) {
+          return {
+            insert: vi.fn(() => Promise.resolve({ error: null })),
+          };
+        }
+        
+        throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
+      });
+
+      const response = await request(app)
+        .post('/guards/register')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          primary_phone: '+27123456789',
+          name: 'Test Guard',
+        });
+
+      // Guard should still be created even if SMS fails
+      expect(response.status).toBe(201);
+      expect(response.body.guard_id).toBe('guard-456');
+      expect(response.body.sms_status).toBe('failed');
+    });
+
+    it('should handle audit logging failure gracefully and still create guard', async () => {
+      const adminToken = generateTestToken('admin-123', 'admin');
+      
+      // Mock logAuditEvent to throw
+      (auditModule as any).__mockLogAuditEvent.mockRejectedValueOnce(new Error('Audit log unavailable'));
+
+      let callCount = 0;
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        callCount++;
+        
+        if (table === 'guards' && callCount === 1) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: null,
+                    error: { code: 'PGRST116' },
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'users' && callCount === 2) {
+          return createInsertNoSelect();
+        }
+        
+        if (table === 'guards' && callCount === 3) {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: 'guard-456' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'guard_registration_events' && callCount === 4) {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: 'event-123' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        if (table === 'guard_registration_events' && callCount === 5) {
+          return createUpdateChain();
+        }
+        
+        if (table === 'audit_log' && callCount === 6) {
+          return {
+            insert: vi.fn(() => Promise.resolve({ error: null })),
+          };
+        }
+        
+        throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
+      });
+
+      const response = await request(app)
+        .post('/guards/register')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          primary_phone: '+27123456789',
+          name: 'Test Guard',
+        });
+
+      // Guard should still be created even if audit logging fails
+      expect(response.status).toBe(201);
+      expect(response.body.guard_id).toBe('guard-456');
+      // Should not expose internal error details
+      expect(response.body.error).toBeUndefined();
+    });
+  });
+
+  describe('Referrer validation edge cases', () => {
+    it('should reject registration when referrer profile not found', async () => {
+      const referrerToken = generateTestToken('referrer-123', 'referrer');
+
+      let callCount = 0;
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        callCount++;
+        
+        if (table === 'referrers' && callCount === 1) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: null,
+                    error: { code: 'PGRST116' },
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
+      });
+
+      const response = await request(app)
+        .post('/guards/register')
+        .set('Authorization', `Bearer ${referrerToken}`)
+        .send({
+          primary_phone: '+27123456789',
+          name: 'Test Guard',
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('PROCESSOR_ERROR');
+      expect(response.body.message).toBe('Referrer profile not found');
+    });
+
+    it('should reject registration when referrer account is inactive', async () => {
+      const referrerToken = generateTestToken('referrer-123', 'referrer');
+
+      let callCount = 0;
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        callCount++;
+        
+        if (table === 'referrers' && callCount === 1) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: 'referrer-123', status: 'INACTIVE' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        
+        throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
+      });
+
+      const response = await request(app)
+        .post('/guards/register')
+        .set('Authorization', `Bearer ${referrerToken}`)
+        .send({
+          primary_phone: '+27123456789',
+          name: 'Test Guard',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Referrer account is not active');
     });
   });
 });
