@@ -77,12 +77,11 @@ export class YocoClient {
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ message: 'Unknown error' })) as { message?: string };
-      throw new Error(`Yoco API error: ${err.message ?? 'Unknown error'}`);
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(`Yoco API error: ${error.message || response.statusText}`);
     }
 
-    const responseData = await response.json() as YocoChargeResponse;
-    return responseData;
+    return response.json();
   }
 
   /**

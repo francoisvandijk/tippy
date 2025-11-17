@@ -1,45 +1,31 @@
 // Integration tests for payments API routes
 // Ledger Reference: §7 (API Surface)
 
-import { vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import request from 'supertest';
+import app from '../../src/server';
 
-// Mock Supabase - MUST be before all imports
-const createMockChain = () => ({
-  select: vi.fn(() => createMockChain()),
-  eq: vi.fn(() => createMockChain()),
-  single: vi.fn().mockResolvedValue({ data: {}, error: null }),
-  limit: vi.fn(() => createMockChain()),
-  order: vi.fn(() => createMockChain()),
-  insert: vi.fn(() => ({
-    select: vi.fn(() => createMockChain()),
-  })),
-  update: vi.fn(() => ({
-    eq: vi.fn().mockResolvedValue({ error: null }),
-  })),
-});
-
+// Mock dependencies
 vi.mock('../../src/lib/db', () => ({
   supabase: {
-    from: vi.fn(() => createMockChain()),
+    from: vi.fn(() => ({
+      insert: vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(),
+        })),
+      })),
+      update: vi.fn(() => ({
+        eq: vi.fn(),
+      })),
+    })),
   },
 }));
 
-// Mock YocoClient - MUST be before all imports
-vi.mock('../../src/lib/yoco', () => {
-  return {
-    YocoClient: class {
-      createCharge = vi.fn().mockResolvedValue({
-        id: 'ch_test_123',
-        status: 'success',
-      });
-      verifyWebhookSignature = vi.fn().mockReturnValue(true);
-    },
-  };
-});
-
-import { describe, it, expect, beforeEach } from 'vitest';
-import request from 'supertest';
-import app from '../../src/server';
+vi.mock('../../src/lib/yoco', () => ({
+  YocoClient: vi.fn(() => ({
+    createCharge: vi.fn(),
+  })),
+}));
 
 describe('POST /payments/create', () => {
   beforeEach(() => {
