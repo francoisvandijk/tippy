@@ -102,7 +102,7 @@ router.post(
         
         // Ignore referrer_id from body if referrer role (security: body must not override identity)
         if (bodyReferrerId && bodyReferrerId !== actualReferrerId) {
-          console.warn(`Referrer ${req.auth!.userId} attempted to supply different referrer_id in body, ignoring`);
+          console.warn("[guards] Referrer attempted to supply different referrer_id in body, ignoring", { userId: req.auth!.userId, bodyReferrerId, actualReferrerId });
         }
       } else if (req.auth!.role === 'admin') {
         // Admin-initiated registration: may optionally supply referrer_id to attribute guard
@@ -175,14 +175,13 @@ router.post(
         const { error: userError } = await supabase.from('users').insert({
           id: userId,
           role: 'guard',
-          msisdn: primary_phone, // Temporary: will be removed after migration period
         });
 
         if (userError) {
-          console.error('Error creating user:', userError);
+          console.error("[guards] Error creating user", userError?.message);
           return res.status(500).json({
             error: 'PROCESSOR_ERROR',
-            message: 'Failed to create user record',
+            message: 'Failed to register guard',
           });
         }
 
@@ -193,7 +192,6 @@ router.post(
           .insert({
             id: userId,
             display_name: displayName,
-            msisdn: primary_phone, // Temporary: for backward compatibility
             msisdn_hash: msisdnHash, // POPIA-compliant storage
             status: 'pending',
             language: language,
@@ -204,10 +202,10 @@ router.post(
           .single();
 
         if (guardError || !newGuard) {
-          console.error('Error creating guard:', guardError);
+          console.error("[guards] Error creating guard", guardError?.message);
           return res.status(500).json({
             error: 'PROCESSOR_ERROR',
-            message: 'Failed to create guard record',
+            message: 'Failed to register guard',
           });
         }
 
@@ -219,7 +217,6 @@ router.post(
         .from('guard_registration_events')
         .insert({
           guard_id: guardId,
-          guard_msisdn: primary_phone, // Denormalized for audit (will be hashed in migration)
           guard_msisdn_hash: msisdnHash, // POPIA-compliant
           registration_method: registrationMethod,
           referrer_id: actualReferrerId || null,
@@ -238,7 +235,7 @@ router.post(
         .single();
 
       if (eventError) {
-        console.error('Error creating registration event:', eventError);
+        console.error("[guards] Error creating registration event", eventError?.message);
         // Non-blocking: continue even if event logging fails
       }
 
@@ -247,35 +244,41 @@ router.post(
       let smsEventId: string | undefined;
 
       if (isNewGuard) {
-        const smsResult = await sendWelcomeSms(
-          {
-            id: guardId,
-            display_name: name,
-            language: language,
-            msisdn: primary_phone,
-          },
-          {
-            referrerId: actualReferrerId,
+        try {
+          const smsResult = await sendWelcomeSms(
+            {
+              id: guardId,
+              display_name: name,
+              language: language,
+              msisdn: primary_phone,
+            },
+            {
+              referrerId: actualReferrerId,
+            }
+          );
+
+          if (smsResult.success) {
+            smsStatus = 'sent';
+            smsEventId = smsResult.smsEventId;
+          } else {
+            smsStatus = 'failed';
+            console.error("[guards] Welcome SMS failed", smsResult.error);
           }
-        );
 
-        if (smsResult.success) {
-          smsStatus = 'sent';
-          smsEventId = smsResult.smsEventId;
-        } else {
+          // Update registration event with SMS status
+          if (registrationEvent?.id) {
+            await supabase
+              .from('guard_registration_events')
+              .update({
+                welcome_sms_sent: smsResult.success,
+                welcome_sms_event_id: smsEventId || null,
+              })
+              .eq('id', registrationEvent.id);
+          }
+        } catch (smsError) {
           smsStatus = 'failed';
-          console.error('Welcome SMS failed:', smsResult.error);
-        }
-
-        // Update registration event with SMS status
-        if (registrationEvent?.id) {
-          await supabase
-            .from('guard_registration_events')
-            .update({
-              welcome_sms_sent: smsResult.success,
-              welcome_sms_event_id: smsEventId || null,
-            })
-            .eq('id', registrationEvent.id);
+          console.error("[guards] Welcome SMS error", smsError instanceof Error ? smsError.message : String(smsError));
+          // Non-blocking: registration succeeds even if SMS fails
         }
       }
 
@@ -287,7 +290,6 @@ router.post(
           .insert({
             referrer_id: actualReferrerId,
             referred_guard_id: guardId,
-            referred_guard_msisdn: primary_phone, // Denormalized
             referred_guard_msisdn_hash: msisdnHash, // POPIA-compliant
             status: 'pending',
           })
@@ -295,34 +297,39 @@ router.post(
           .single();
 
         if (referralError) {
-          console.error('Error creating referral:', referralError);
+          console.error("[guards] Error creating referral", referralError?.message);
           // Non-blocking: registration succeeds even if referral creation fails
         } else {
           referralId = referral.id;
         }
       }
 
-      // Log audit event
-      await logAuditEvent({
-        event_type: 'GUARD_REGISTERED',
-        event_category: 'registration',
-        actor_user_id: req.auth!.userId, // Extract from auth token (P1.6)
-        actor_role: req.auth!.role, // Extract from auth token (P1.6)
-        actor_ip_address: req.ip || req.socket.remoteAddress || undefined,
-        actor_user_agent: req.get('user-agent') || undefined,
-        entity_type: 'guard',
-        entity_id: guardId,
-        action: 'register',
-        description: `Guard registered via ${registrationMethod}. MSISDN: ${msisdnMasked}`,
-        status: 'success',
-        metadata: {
-          registration_method: registrationMethod,
-          referrer_id: actualReferrerId,
-          referral_id: referralId,
-          sms_status: smsStatus,
-          sms_event_id: smsEventId,
-        },
-      });
+      // Log audit event (non-blocking)
+      try {
+        await logAuditEvent({
+          event_type: 'GUARD_REGISTERED',
+          event_category: 'registration',
+          actor_user_id: req.auth!.userId, // Extract from auth token (P1.6)
+          actor_role: req.auth!.role, // Extract from auth token (P1.6)
+          actor_ip_address: req.ip || req.socket.remoteAddress || undefined,
+          actor_user_agent: req.get('user-agent') || undefined,
+          entity_type: 'guard',
+          entity_id: guardId,
+          action: 'register',
+          description: `Guard registered via ${registrationMethod}. MSISDN: ${msisdnMasked}`,
+          status: 'success',
+          metadata: {
+            registration_method: registrationMethod,
+            referrer_id: actualReferrerId,
+            referral_id: referralId,
+            sms_status: smsStatus,
+            sms_event_id: smsEventId,
+          },
+        });
+      } catch (auditError) {
+        console.error("[guards] Audit logging error", auditError instanceof Error ? auditError.message : String(auditError));
+        // Non-blocking: registration succeeds even if audit logging fails
+      }
 
       return res.status(201).json({
         message: 'Guard registered successfully',
@@ -333,10 +340,10 @@ router.post(
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Guard registration error:', errorMessage);
+      console.error("[guards] Guard registration error", errorMessage);
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
-        message: 'Internal server error',
+        message: 'Failed to register guard',
       });
     }
   }
@@ -435,15 +442,17 @@ router.get(
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Guard profile fetch error:', errorMessage);
+      console.error("[guards] Guard profile fetch error", errorMessage);
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
-        message: 'Internal server error',
+        message: 'Failed to fetch guard profile',
       });
     }
   }
 );
 
 export default router;
+
+
 
 
