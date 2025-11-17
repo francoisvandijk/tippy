@@ -7,6 +7,13 @@
 import { supabase } from './db';
 import { hashPhoneNumber, maskPhoneNumber } from './utils';
 
+export interface SmsProviderResponse {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+  response?: Record<string, unknown>;
+}
+
 export interface SendSmsOptions {
   phoneNumber: string;
   message: string;
@@ -164,7 +171,7 @@ export async function sendSms(options: SendSmsOptions): Promise<SmsResult> {
 async function sendViaSendGrid(
   phoneNumber: string,
   message: string
-): Promise<{ success: boolean; messageId?: string; error?: string; response?: Record<string, unknown> }> {
+): Promise<SmsProviderResponse> {
   const apiKey = process.env.SENDGRID_API_KEY;
   if (!apiKey) {
     return { success: false, error: 'SENDGRID_API_KEY not configured' };
@@ -193,7 +200,7 @@ async function sendViaSendGrid(
       }),
     });
 
-    const responseData = await response.json();
+    const responseData = await response.json() as Record<string, unknown>;
 
     if (!response.ok) {
       return {
@@ -205,7 +212,7 @@ async function sendViaSendGrid(
 
     return {
       success: true,
-      messageId: responseData.message_id || responseData.id,
+      messageId: (responseData.message_id ?? responseData.id) as string | undefined,
       response: responseData,
     };
   } catch (error) {
@@ -222,7 +229,7 @@ async function sendViaSendGrid(
 async function sendViaTwilio(
   phoneNumber: string,
   message: string
-): Promise<{ success: boolean; messageId?: string; error?: string; response?: Record<string, unknown> }> {
+): Promise<SmsProviderResponse> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromPhone = process.env.TWILIO_PHONE_NUMBER || process.env.WELCOME_SMS_SENDER_ID;
@@ -248,19 +255,19 @@ async function sendViaTwilio(
       body: body.toString(),
     });
 
-    const responseData = await response.json();
+    const responseData = await response.json() as Record<string, unknown>;
 
     if (!response.ok) {
       return {
         success: false,
-        error: `Twilio API error: ${responseData.message || JSON.stringify(responseData)}`,
+        error: `Twilio API error: ${(responseData.message as string) || JSON.stringify(responseData)}`,
         response: responseData,
       };
     }
 
     return {
       success: true,
-      messageId: responseData.sid,
+      messageId: responseData.sid as string | undefined,
       response: responseData,
     };
   } catch (error) {
@@ -297,7 +304,7 @@ export async function sendWelcomeSms(
     };
   }
 
-  const language = guard.language || options?.language || 'en';
+  const language = guard.language || 'en';
   const payoutDay = options?.payoutDay || process.env.PAYOUT_WEEKLY_SCHEDULE || 'Friday';
   const supportNumber = options?.supportNumber || process.env.SUPPORT_PHONE_NUMBER || '060-123-4567';
 
@@ -336,5 +343,7 @@ export async function sendWelcomeSms(
     },
   });
 }
+
+
 
 

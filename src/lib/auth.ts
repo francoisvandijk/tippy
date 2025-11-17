@@ -156,18 +156,20 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 export function requireRole(...allowedRoles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.auth) {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'AUTHZ_DENIED',
         message: 'Authentication required',
       });
+      return;
     }
 
     if (!allowedRoles.includes(req.auth.role)) {
       console.error(`Role mismatch: required ${allowedRoles.join(' or ')}, got ${req.auth.role}`);
-      return res.status(403).json({
+      res.status(403).json({
         error: 'AUTHZ_DENIED',
         message: `Access denied. Required role: ${allowedRoles.join(' or ')}`,
       });
+      return;
     }
 
     next();
