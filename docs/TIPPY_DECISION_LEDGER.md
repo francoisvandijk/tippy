@@ -32,7 +32,7 @@
 - [§19 — Table / Endpoint Index](#19--table--endpoint-index)
   - [§19.5 — Doppler CI Workflow (Locked)](#195--doppler-ci-workflow-locked)
   - [§19.9 — Phase Close-Out Process (Locked)](#199--phase-close-out-process-locked)
-  - [§19.10 — AI Auto-Approval Exception (Locked)](#1910--ai-auto-approval-exception-locked)
+  - [§19.10 — AI Auto-Approval & Auto-Merge Exception (Locked)](#1910--ai-auto-approval--auto-merge-exception-locked)
 - [§20 — Reserved](#20--reserved)
 - [§21 — Reserved](#21--reserved)
 - [§22 — Reserved](#22--reserved)
@@ -1007,67 +1007,287 @@ Establishes a repeatable, immutable governance protocol for every development ph
 
 **This section is LOCKED. No modifications without Ledger amendment process.**
 
-### §19.10 — AI Auto-Approval Exception (Locked)
+### §19.10 — AI Auto-Approval & Auto-Merge Exception (Locked)
 
-**Scope:**  
+**Status:** Locked  
 
-Defines when an AI agent may self-approve a PR without a human Governance Trio review, while remaining compliant with all Ledger-locking rules.
+**Scope:** Tippy repository (`francoisvandijk/tippy`), `main` branch, GitHub-hosted Pull Requests.
 
-**19.10.1 Conditions for Auto-Approval**  
+This section defines the **only** circumstances under which an AI agent may:
 
-An AI agent may self-approve a PR **only if all conditions are true**:  
+1. **Approve** a Pull Request as a reviewer, and  
 
-1. The PR modifies **no source code**, only governance files.  
+2. **Merge** that Pull Request into `main`  
 
-2. Changes are strictly additive and do not alter or remove any existing locked section.  
+without human review.
 
-3. CI (Doppler) passes on the PR branch and on main.  
+All other cases require human approval in line with §19.5 and §19.9.
 
-4. Immutable audit logs (§25.x) are updated automatically.  
+---
 
-5. The agent performs a full §19.9 verification before approval.
+#### 19.10.1 Allowed PR Scope
 
-**19.10.2 Forbidden Auto-Approval Cases**  
+AI auto-approval / auto-merge is only permitted when **all** of the following are true:
 
-AI agents may *not* auto-approve PRs that:  
+1. **Repository & Target**
 
-- Modify any code, scripts, migrations, or workflows.  
+   - Repo: `francoisvandijk/tippy`
 
-- Change or delete locked sections.  
+   - Base branch: `main`
 
-- Introduce secrets, tokens, or environment variables.  
+2. **Branch Naming**
 
-- Affect POPIA-protected data models.  
+   - Head branch starts with one of:
 
-- Are part of a Phase close-out requiring Governance Trio sign-off.
+     - `feature/`
 
-**19.10.3 Required Audit Entries**  
+     - `fix/`
 
-For every auto-approval, the agent must record:  
+     - `chore/`
 
-- PR number  
+     - `refactor/`
 
-- Commit hash  
+3. **Changed File Paths (Positive Scope)**
 
-- Timestamp  
+   - All modified files are limited to:
 
-- Ledger sections validated  
+     - `src/**`
 
-- CI run ID  
+     - `tests/**`
 
-- Auto-approval justification
+     - `infra/db/migrations/**`
 
-**19.10.4 Security & Oversight**  
+     - `docs/**` (implementation docs only; see exclusions below)
 
-Auto-approved PRs are automatically routed to:  
+     - `.github/workflows/**` **only** if changes are limited to:
 
-- ENGINEERING_LEAD_GH  
+       - Non-secret env names
 
-- COMPLIANCE_OFFICER_GH  
+       - Step names
 
-- DEVOPS_LEAD_GH  
+       - Matrix / cache settings
 
-for post-merge audit.
+       - Comments
+
+4. **Explicit Exclusions (Forbidden for Auto-Merge)**
+
+   - PR **must NOT** modify any of the following:
+
+     - `docs/TIPPY_DECISION_LEDGER.md`
+
+     - Any file whose section is marked **(Locked)** and is purely governance (e.g. `docs/*` governance specs)
+
+     - `ops/doppler/**`
+
+     - `.github/workflows/doppler-ci.yml`
+
+     - Branch protection / CI governance docs:
+
+       - `docs/PHASE_*_GOVERNANCE_CLOSE_OUT.md`
+
+       - Any future file explicitly tagged "Governance – Human Review Required"
+
+   - If **any** of these files are touched, AI may **propose** a PR but may **not** auto-approve or auto-merge it.
+
+---
+
+#### 19.10.2 Technical Preconditions (Must Pass)
+
+The AI may consider auto-approval only if the following **local** checks succeed on the PR head commit:
+
+1. **Build**
+
+   - `npm run build` exits with code `0`.
+
+2. **Tests**
+
+   - `npm test` exits with code `0`.
+
+   - No failing tests and no suite setup errors.
+
+3. **Migrations (If Touched)**
+
+   - If any file under `infra/db/migrations/**` is changed:
+
+     - The migration runner (e.g. `npm run migrate` or `ts-node src/migrate.ts`) must succeed against a test or ephemeral database.
+
+     - No `relation does not exist` or `duplicate relation` errors.
+
+     - No RLS policy failures during migration.
+
+4. **Static Checks (If Available)**
+
+   - If scripts exist in `package.json`, they **must** pass when present:
+
+     - `npm run lint`
+
+     - `npm run typecheck`
+
+5. **Secrets & POPIA Guard Rails**
+
+   - A grep scan across the diff must confirm:
+
+     - No new hard-coded secrets (API keys, passwords, tokens).
+
+     - No logging of raw MSISDN or other PII.
+
+   - If such patterns are found, AI must not auto-merge.
+
+If **any** of the above checks fail or cannot be run, AI must leave the PR for human review.
+
+---
+
+#### 19.10.3 CI Preconditions (GitHub / Doppler)
+
+In addition to local checks, AI may only auto-approve/merge if **all** of the following are true:
+
+1. **Required Status Checks**
+
+   - GitHub branch protection for `main` requires **Doppler CI** and any other mandatory checks defined in §19.5.
+
+   - For the PR in question:
+
+     - All required checks show **SUCCESS**.
+
+     - No pending or failed **required** checks.
+
+2. **Merge State**
+
+   - GitHub reports merge state as **CLEAN** (no conflicts and merge allowed).
+
+AI must use either:
+
+- The GitHub CLI (`gh pr view --json`) or
+
+- The GitHub API (via tool)  
+
+to verify required checks and merge state **before** auto-merging.
+
+If CI status cannot be confirmed programmatically, AI must not auto-merge. It may still leave the PR open and unapproved, or approved but unmerged, depending on §19.10.4.
+
+---
+
+#### 19.10.4 Auto-Approval Behaviour
+
+If §§19.10.1–19.10.3 are satisfied:
+
+1. The AI may submit a PR review with:
+
+   - State: **APPROVE**
+
+   - Body including at minimum:
+
+     - Summary of changes
+
+     - Confirmation that:
+
+       - `npm run build` and `npm test` passed locally
+
+       - Any migrations (if present) ran successfully
+
+       - No governance/locked files were modified
+
+       - All required CI checks are green
+
+2. If **any** precondition is not met:
+
+   - The AI must **not** approve the PR.
+
+   - Instead, it must add a **COMMENT** explaining which conditions failed and that human review is required.
+
+---
+
+#### 19.10.5 Auto-Merge Behaviour
+
+The AI may auto-merge a PR only if:
+
+1. All conditions in §§19.10.1–19.10.4 are satisfied; **and**
+
+2. Branch protection indicates that:
+
+   - All required checks are passing.
+
+   - The PR is mergeable (no conflicts, no blockers).
+
+When auto-merging:
+
+1. Merge method:
+
+   - Default: **Squash merge** into `main`.
+
+2. Post-merge:
+
+   - Optionally delete the head branch if:
+
+     - Branch name is prefixed `feature/`, `fix/`, `chore/`, or `refactor/`; and
+
+     - There is no explicit "do not delete" label or note on the PR (e.g., `keep-branch`).
+
+If at any point GitHub rejects the merge (e.g. new commits added, CI re-running, new failures), the AI must **not** retry. It must instead leave a comment summarising the failure and require human intervention.
+
+---
+
+#### 19.10.6 Audit Logging Requirements
+
+For every AI-approved and/or AI-merged PR, the AI must ensure an audit trail exists in:
+
+- `ops/doppler/AUDIT_LOG.txt` or
+
+- Another Ledger-approved audit file defined in §25
+
+Each entry must include at minimum:
+
+- UTC timestamp
+
+- PR number and title
+
+- Head branch and commit SHA
+
+- Summary of scope (one line)
+
+- Result:
+
+  - `AI_APPROVED_ONLY`
+
+  - `AI_APPROVED_AND_MERGED`
+
+- CI context (e.g. Doppler CI run ID, overall status)
+
+- A short note confirming that §19.10 preconditions were satisfied
+
+If the audit file cannot be updated for any reason, AI must **not** auto-merge.
+
+---
+
+#### 19.10.7 Human Override
+
+At any time:
+
+- The Governance Lead may disable AI auto-approval/auto-merge by:
+
+  - Removing the agent's repository permissions, or
+
+  - Adding a `no-auto-merge` label to the PR.
+
+If a `no-auto-merge` label is present on the PR, the AI must not approve or merge it regardless of other conditions.
+
+---
+
+**Summary:**  
+
+AI may auto-approve and auto-merge **only** when:
+
+- Scope is implementation-only,  
+
+- Local build/tests/migrations pass,  
+
+- CI is green,  
+
+- No locked/governance files are touched, and  
+
+- An audit entry is written.
+
+All other changes require human review.
 
 ---
 
