@@ -11,7 +11,8 @@
     "test:coverage": "vitest --coverage",
     "migrate": "node dist/migrate.js",
     "migrate:up": "node dist/migrate.js up",
-    "migrate:down": "node dist/migrate.js down"
+    "migrate:down": "node dist/migrate.js down",
+    "migrate:status": "node dist/migrate.js status"
   },
   "keywords": [],
   "author": "",
