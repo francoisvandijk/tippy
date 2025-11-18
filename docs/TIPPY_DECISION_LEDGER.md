@@ -33,6 +33,7 @@
   - [§19.5 — Doppler CI Workflow (Locked)](#195--doppler-ci-workflow-locked)
   - [§19.9 — Phase Close-Out Process (Locked)](#199--phase-close-out-process-locked)
   - [§19.10 — AI Auto-Approval & Auto-Merge Exception (Locked)](#1910--ai-auto-approval--auto-merge-exception-locked)
+  - [§19.11 — PR Creation Workflow (Locked)](#1911--pr-creation-workflow-locked)
 - [§20 — Reserved](#20--reserved)
 - [§21 — Reserved](#21--reserved)
 - [§22 — Reserved](#22--reserved)
@@ -1288,6 +1289,67 @@ AI may auto-approve and auto-merge **only** when:
 - An audit entry is written.
 
 All other changes require human review.
+
+---
+
+### §19.11 — PR Creation Workflow (Locked)
+
+**Status**: Locked — Final  
+**Governance Authority**: Tippy Decision Ledger v1.0 (Final)
+
+#### Scope
+
+Applies to all AI agents and humans when creating Pull Requests for the Tippy repository. Applies to both feature branches and governance branches.
+
+#### 19.11.1 Preferred PR Creation Method (bash/zsh/WSL)
+
+All automated PR creation MUST use the GitHub CLI from a POSIX-style shell (bash, zsh, or WSL), NOT raw PowerShell.
+
+**Standard command pattern:**
+
+```bash
+gh pr create --base main --head <branch> --title "<title>" --body-file pr_body.txt
+```
+
+The PR body MUST be sourced from a file named `pr_body.txt` in the repo root (no giant inline `--body` strings).
+
+#### 19.11.2 Windows / PowerShell Limitation
+
+If the current environment is PowerShell and `gh pr create` fails due to quoting/escaping/body issues:
+
+- Agents MUST NOT attempt ad-hoc complex quoting or repeated retries.
+
+- Instead, they MUST:
+
+  1. Output the compare URL for manual creation:
+
+     ```
+     https://github.com/<owner>/<repo>/compare/main...<branch>
+     ```
+
+  2. Provide:
+
+     - The PR title (single line).
+
+     - The full PR body (from `pr_body.txt`) for manual paste.
+
+  3. Optionally provide a bash/WSL-friendly `gh pr create` command the human can run in a POSIX shell.
+
+#### 19.11.3 Separation from Approval/Merge
+
+PR creation is purely about opening the PR.
+
+Approval and merge remain governed by §19.9 (Phase Close-Out) and §19.10 (AI Auto-Approval Exception).
+
+Agents MUST NOT auto-approve or merge as part of the PR creation workflow.
+
+#### 19.11.4 Secrets & POPIA
+
+PR descriptions MUST NOT contain secrets, tokens, DB URLs, or real PII.
+
+Any example commands must use placeholders, not real values.
+
+**This section is LOCKED. No modifications without Ledger amendment process.**
 
 ---
 
