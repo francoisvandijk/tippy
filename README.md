@@ -35,13 +35,44 @@ All configuration via environment variables (Doppler):
 
 ### Database Migration
 
-Run the migration:
+The migration runner (P1.2) processes all 19 migration files sequentially and tracks applied migrations in the `schema_migrations` table.
+
+#### Running Migrations
 
 ```bash
+# Build first (required)
+npm run build
+
+# Check migration status
+npm run migrate:status
+
+# Apply all pending migrations
 npm run migrate:up
+
+# Rollback last migration (basic - requires manual SQL reversal)
+npm run migrate:down
+
+# Rollback to specific version
+npm run migrate:down 0019
 ```
 
-Or manually execute `infra/db/migrations/0004_payments.sql` against your Supabase Postgres database.
+#### Migration Runner Features
+
+- **Idempotent**: Tracks applied migrations in `schema_migrations` table
+- **Sequential**: Processes migrations in numerical order (0004, 0019, 0020, etc.)
+- **Safe**: Skips already-applied migrations
+- **Ledger-Compliant**: No plaintext secrets, uses environment variables per §25
+
+#### Manual Migration (Alternative)
+
+If you prefer to run migrations manually, execute SQL files from `infra/db/migrations/` in order:
+
+1. `0004_payments.sql`
+2. `0019_rls_policies.sql`
+3. `0020_users.sql`
+4. ... (all 19 files in numerical order)
+
+**Note**: The migration runner is recommended as it ensures proper sequencing and tracking.
 
 ### Development
 
