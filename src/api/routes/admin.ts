@@ -131,7 +131,45 @@ router.post(
         });
       }
 
-      // Calculate payout items for each guard
+      // Get guard IDs for eligible guards
+      const eligibleGuardIds = (eligibleGuards || []).map(g => g.id);
+
+      // Find all pending QR_REPLACEMENT items for eligible guards
+      // These are fees created during QR reassignment (POST /qr/reassign) that need to be deducted
+      // Per Ledger §9: QR_REPLACEMENT fees are deducted from the guard's next payout
+      let pendingQrReplacementFees: Array<{
+        id: string;
+        guard_id: string;
+        amount_zar_cents: number;
+        net_amount_zar_cents: number;
+      }> = [];
+
+      if (eligibleGuardIds.length > 0) {
+        // Find pending QR replacement fees that are not yet tied to a payout batch
+        // Items in pending batches (TPY-QR-FEE-PENDING-*) are included here
+        const { data: pendingQrFees, error: qrFeesError } = await supabase
+          .from('payout_batch_items')
+          .select('id, guard_id, amount_zar_cents, net_amount_zar_cents')
+          .eq('item_type', 'QR_REPLACEMENT')
+          .eq('status', 'pending')
+          .in('guard_id', eligibleGuardIds);
+
+        if (qrFeesError) {
+          console.error("[admin] Error fetching pending QR replacement fees", qrFeesError?.message);
+          // Non-blocking: continue with payout generation even if QR fee lookup fails
+        } else if (pendingQrFees) {
+          pendingQrReplacementFees = pendingQrFees;
+        }
+      }
+
+      // Group QR replacement fees by guard_id to calculate total deduction per guard
+      const qrFeesByGuard = new Map<string, number>();
+      for (const fee of pendingQrReplacementFees) {
+        const currentTotal = qrFeesByGuard.get(fee.guard_id) || 0;
+        qrFeesByGuard.set(fee.guard_id, currentTotal + fee.net_amount_zar_cents);
+      }
+
+      // Calculate payout items for each guard (including QR replacement fee deductions)
       const payoutItems: Array<{
         payout_batch_id: string;
         guard_id: string;
@@ -149,8 +187,15 @@ router.post(
       for (const guard of eligibleGuards || []) {
         const unpaidBalance = guard.lifetime_net_tips - guard.lifetime_payouts;
         if (unpaidBalance >= payoutMinEligibility) {
-          const netAmount = unpaidBalance - cashSendFee;
+          // Get total QR replacement fees for this guard
+          const qrReplacementFeesTotal = qrFeesByGuard.get(guard.id) || 0;
+          
+          // Calculate net amount after CashSend fee and QR replacement fees
+          // Per Ledger §9: QR_REPLACEMENT fees are deducted from the guard's payout
+          const netAmount = unpaidBalance - cashSendFee - qrReplacementFeesTotal;
+          
           if (netAmount > 0) {
+            // Add GUARD payout item
             payoutItems.push({
               payout_batch_id: batchId,
               guard_id: guard.id,
@@ -167,11 +212,37 @@ router.post(
         }
       }
 
-      // Insert payout items
-      if (payoutItems.length > 0) {
+      // Update pending QR_REPLACEMENT items to reference this payout batch
+      // This ensures idempotency: re-running payout generation won't double-deduct fees
+      for (const qrFee of pendingQrReplacementFees) {
+        // Only update QR fees for guards that are eligible and have a payout item
+        const guardHasPayout = payoutItems.some(item => item.guard_id === qrFee.guard_id && item.item_type === 'GUARD');
+        
+        if (guardHasPayout) {
+          // Update the QR replacement fee item to reference this payout batch
+          // This marks it as processed and prevents double-deduction
+          const { error: updateQrFeeError } = await supabase
+            .from('payout_batch_items')
+            .update({
+              payout_batch_id: batchId,
+              status: 'pending', // Keep as pending until batch is processed
+            })
+            .eq('id', qrFee.id);
+
+          if (updateQrFeeError) {
+            console.error("[admin] Error updating QR replacement fee item", updateQrFeeError?.message);
+            // Non-blocking: continue even if QR fee update fails
+          }
+        }
+      }
+
+      // Insert new payout items (GUARD items only)
+      // QR_REPLACEMENT items are already in the database, we just update their batch reference
+      const newPayoutItems = payoutItems.filter(item => item.item_type === 'GUARD');
+      if (newPayoutItems.length > 0) {
         const { error: itemsError } = await supabase
           .from('payout_batch_items')
-          .insert(payoutItems);
+          .insert(newPayoutItems);
 
         if (itemsError) {
           console.error("[admin] Error creating payout items", itemsError?.message);
@@ -202,14 +273,26 @@ router.post(
       }
 
       // Generate CSV (simplified - in production, use proper CSV library)
+      // Include both GUARD items and QR_REPLACEMENT items for complete payout breakdown
       const csvRows: string[] = [
-        'Guard ID,Net Amount (ZAR cents),CashSend Fee (ZAR cents),Total Amount (ZAR cents)',
+        'Guard ID,Item Type,Net Amount (ZAR cents),CashSend Fee (ZAR cents),Total Amount (ZAR cents)',
       ];
       
+      // Add GUARD items
       for (const item of payoutItems) {
         csvRows.push(
-          `${item.guard_id},${item.net_amount_zar_cents},${item.cashsend_fee_zar_cents},${item.amount_zar_cents}`
+          `${item.guard_id},${item.item_type},${item.net_amount_zar_cents},${item.cashsend_fee_zar_cents},${item.amount_zar_cents}`
         );
+      }
+      
+      // Add QR_REPLACEMENT items for reference (these are deductions, already included in GUARD net amounts)
+      for (const qrFee of pendingQrReplacementFees) {
+        const guardHasPayout = payoutItems.some(item => item.guard_id === qrFee.guard_id && item.item_type === 'GUARD');
+        if (guardHasPayout) {
+          csvRows.push(
+            `${qrFee.guard_id},QR_REPLACEMENT,${qrFee.net_amount_zar_cents},0,${qrFee.amount_zar_cents}`
+          );
+        }
       }
       
       const csvContent = csvRows.join('\n');
