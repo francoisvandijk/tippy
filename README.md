@@ -22,8 +22,13 @@ This implementation provides the core payment processing functionality as define
 
 ### Environment Variables
 
-All configuration via environment variables (Doppler):
+All configuration via environment variables (Doppler per §25):
 
+See `.env.example` for a complete list of all required environment variables. This file lists all variable names with obvious placeholders—no real secrets are included.
+
+**Note**: Real values are managed via Doppler per Ledger §25. For local development, copy `.env.example` to `.env.local` (gitignored) and fill in your values.
+
+Key variables include:
 - `SUPABASE_URL` / `DB_URL` — Database connection URL
 - `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` — Database API key
 - `YOCO_TEST_PUBLIC_KEY` — Yoco test public API key (dev/test environments)
