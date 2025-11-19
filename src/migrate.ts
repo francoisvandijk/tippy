@@ -4,7 +4,9 @@
 
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+
 import postgres from 'postgres';
+
 import { getDbUrl } from './lib/db';
 
 interface MigrationRecord {
@@ -56,11 +58,7 @@ async function getAppliedMigrations(sql: postgres.Sql): Promise<Set<string>> {
 /**
  * Record a migration as applied
  */
-async function recordMigration(
-  sql: postgres.Sql,
-  version: string,
-  name: string
-): Promise<void> {
+async function recordMigration(sql: postgres.Sql, version: string, name: string): Promise<void> {
   await sql`
     INSERT INTO schema_migrations (version, name, applied_at)
     VALUES (${version}, ${name}, NOW())
@@ -71,10 +69,7 @@ async function recordMigration(
 /**
  * Remove a migration record (for rollback)
  */
-async function removeMigrationRecord(
-  sql: postgres.Sql,
-  version: string
-): Promise<void> {
+async function removeMigrationRecord(sql: postgres.Sql, version: string): Promise<void> {
   await sql`DELETE FROM schema_migrations WHERE version = ${version}`;
 }
 
@@ -95,13 +90,13 @@ async function executeMigration(
   name: string
 ): Promise<void> {
   const sqlContent = readFileSync(filePath, 'utf-8');
-  
+
   // Execute the SQL (postgres package supports multi-statement SQL)
   await sql.unsafe(sqlContent);
-  
+
   // Record the migration
   await recordMigration(sql, version, name);
-  
+
   console.log(`✅ Applied migration: ${version} - ${name}`);
 }
 
@@ -109,15 +104,11 @@ async function executeMigration(
  * Rollback a specific migration (basic implementation)
  * Note: Full rollback requires down migrations, which are not implemented yet
  */
-async function rollbackMigration(
-  sql: postgres.Sql,
-  version: string,
-  name: string
-): Promise<void> {
+async function rollbackMigration(sql: postgres.Sql, version: string, name: string): Promise<void> {
   console.log(`⚠️  Rollback requested for ${version} - ${name}`);
   console.log('⚠️  Note: Full rollback requires down migration scripts (not yet implemented)');
   console.log('⚠️  Migration record will be removed, but SQL changes must be manually reversed');
-  
+
   await removeMigrationRecord(sql, version);
   console.log(`✅ Removed migration record: ${version}`);
 }
@@ -127,32 +118,32 @@ async function rollbackMigration(
  */
 async function runMigrationsUp(sql: postgres.Sql, migrationsDir: string): Promise<void> {
   console.log('🔄 Running migrations (up)...\n');
-  
+
   // Ensure schema_migrations table exists
   await ensureSchemaMigrationsTable(sql);
-  
+
   // Get all migration files
   const files = getMigrationFiles(migrationsDir);
   console.log(`Found ${files.length} migration file(s)\n`);
-  
+
   // Get already applied migrations
   const applied = await getAppliedMigrations(sql);
   console.log(`Already applied: ${applied.size} migration(s)\n`);
-  
+
   // Apply pending migrations
   let appliedCount = 0;
   for (const file of files) {
     const version = getVersionFromFilename(file);
     const name = file.replace('.sql', '');
-    
+
     if (applied.has(version)) {
       console.log(`⏭️  Skipping ${version} - ${name} (already applied)`);
       continue;
     }
-    
+
     const filePath = join(migrationsDir, file);
     console.log(`🔄 Applying ${version} - ${name}...`);
-    
+
     try {
       await executeMigration(sql, filePath, version, name);
       appliedCount++;
@@ -161,7 +152,7 @@ async function runMigrationsUp(sql: postgres.Sql, migrationsDir: string): Promis
       throw error;
     }
   }
-  
+
   if (appliedCount === 0) {
     console.log('\n✅ All migrations are up to date');
   } else {
@@ -178,7 +169,7 @@ async function runMigrationsDown(
   targetVersion?: string
 ): Promise<void> {
   console.log('🔄 Rolling back migrations (down)...\n');
-  
+
   // Get applied migrations (in reverse order)
   const applied = await getAppliedMigrations(sql);
   const appliedArray = Array.from(applied).sort((a, b) => {
@@ -186,25 +177,25 @@ async function runMigrationsDown(
     const numB = parseInt(b, 10);
     return numB - numA; // Reverse order
   });
-  
+
   if (appliedArray.length === 0) {
     console.log('✅ No migrations to rollback');
     return;
   }
-  
+
   const files = getMigrationFiles(migrationsDir);
   const filesByVersion = new Map<string, string>();
   for (const file of files) {
     const version = getVersionFromFilename(file);
     filesByVersion.set(version, file);
   }
-  
+
   let rolledBackCount = 0;
   for (const version of appliedArray) {
     if (targetVersion && version < targetVersion) {
       break;
     }
-    
+
     const file = filesByVersion.get(version);
     if (!file) {
       console.log(`⚠️  Migration file not found for version ${version}, removing record only`);
@@ -212,16 +203,16 @@ async function runMigrationsDown(
       rolledBackCount++;
       continue;
     }
-    
+
     const name = file.replace('.sql', '');
     await rollbackMigration(sql, version, name);
     rolledBackCount++;
-    
+
     if (targetVersion && version === targetVersion) {
       break;
     }
   }
-  
+
   if (rolledBackCount === 0) {
     console.log('\n✅ No migrations rolled back');
   } else {
@@ -234,16 +225,16 @@ async function runMigrationsDown(
  */
 async function showStatus(sql: postgres.Sql, migrationsDir: string): Promise<void> {
   console.log('📊 Migration Status\n');
-  
+
   await ensureSchemaMigrationsTable(sql);
-  
+
   const files = getMigrationFiles(migrationsDir);
   const applied = await getAppliedMigrations(sql);
-  
+
   console.log(`Total migration files: ${files.length}`);
   console.log(`Applied migrations: ${applied.size}`);
   console.log(`Pending migrations: ${files.length - applied.size}\n`);
-  
+
   console.log('Migration Details:');
   for (const file of files) {
     const version = getVersionFromFilename(file);
@@ -259,20 +250,20 @@ async function showStatus(sql: postgres.Sql, migrationsDir: string): Promise<voi
 async function main() {
   const direction = process.argv[2] || 'up';
   const targetVersion = process.argv[3]; // For rollback to specific version
-  
+
   const migrationsDir = join(__dirname, '../infra/db/migrations');
-  
+
   // Get database URL (masked in logs per Ledger §25)
   const dbUrl = getDbUrl();
   const maskedUrl = dbUrl.replace(/:[^:@]+@/, ':****@');
   console.log(`📦 Database: ${maskedUrl}\n`);
-  
+
   // Create postgres connection
   const sql = postgres(dbUrl, {
     max: 1, // Single connection for migrations
     onnotice: () => {}, // Suppress notices
   });
-  
+
   try {
     if (direction === 'up') {
       await runMigrationsUp(sql, migrationsDir);

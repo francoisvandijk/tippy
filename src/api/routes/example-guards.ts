@@ -1,10 +1,11 @@
 // Example: Guards API routes with authentication
 // Ledger Reference: §7 (API Surface), §2 (Roles & Access), §8 (RLS / Security)
-// 
+//
 // NOTE: This is an example file showing how to use auth middleware.
 // When P1.2/P1.3 routes are merged, apply this pattern to the actual guards.ts file.
 
 import { Router, Request, Response } from 'express';
+
 import { requireAuth, requireRole } from '../../lib/auth';
 import { supabase } from '../../lib/db';
 
@@ -41,7 +42,7 @@ router.get(
       }
 
       return res.status(200).json(guard);
-    } catch (error) {
+    } catch (_error) {
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
         message: 'Internal server error',
@@ -51,4 +52,3 @@ router.get(
 );
 
 export default router;
-

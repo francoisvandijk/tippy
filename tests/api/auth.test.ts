@@ -1,7 +1,9 @@
 // Tests for authentication and authorization
 // Ledger Reference: §2 (Roles & Access), §8 (RLS / Security), §12 (Error Taxonomy)
 
-import { vi } from 'vitest';
+import { sign, verify, type JwtPayload } from 'jsonwebtoken';
+import request from 'supertest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -26,11 +28,8 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import request from 'supertest';
-import app from '../../src/server';
-import jwt from 'jsonwebtoken';
 import * as dbModule from '../../src/lib/db';
+import app from '../../src/server';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
@@ -43,7 +42,7 @@ process.env.SUPABASE_JWT_SECRET = TEST_JWT_SECRET;
  * Generate a test JWT token
  */
 function generateTestToken(userId: string, role: string = 'guard'): string {
-  return jwt.sign(
+  return sign(
     {
       sub: userId,
       role: role,
@@ -63,9 +62,7 @@ describe('Authentication Middleware', () => {
     it('should return 401 AUTHZ_DENIED for protected endpoints without Authorization header', async () => {
       // This test assumes we have a protected endpoint
       // For now, we'll test the auth middleware behavior
-      const response = await request(app)
-        .get('/guards/me')
-        .send();
+      const response = await request(app).get('/guards/me').send();
 
       // If guards/me exists and is protected, it should return 401
       // If it doesn't exist, it will return 404, which is also acceptable
@@ -82,10 +79,7 @@ describe('Authentication Middleware', () => {
     });
 
     it('should return 401 for missing token', async () => {
-      const response = await request(app)
-        .get('/guards/me')
-        .set('Authorization', 'Bearer ')
-        .send();
+      const response = await request(app).get('/guards/me').set('Authorization', 'Bearer ').send();
 
       expect([401, 404]).toContain(response.status);
     });
@@ -93,7 +87,7 @@ describe('Authentication Middleware', () => {
 
   describe('Invalid tokens', () => {
     it('should return 401 for expired token', async () => {
-      const expiredToken = jwt.sign(
+      const expiredToken = sign(
         {
           sub: 'user-123',
           role: 'guard',
@@ -112,7 +106,7 @@ describe('Authentication Middleware', () => {
     });
 
     it('should return 401 for token with wrong secret', async () => {
-      const wrongToken = jwt.sign(
+      const wrongToken = sign(
         {
           sub: 'user-123',
           role: 'guard',
@@ -129,7 +123,7 @@ describe('Authentication Middleware', () => {
     });
 
     it('should return 401 for token missing user ID (sub claim)', async () => {
-      const invalidToken = jwt.sign(
+      const invalidToken = sign(
         {
           role: 'guard',
           // Missing 'sub' claim
@@ -154,7 +148,7 @@ describe('Authentication Middleware', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         if (table === 'guards' && callCount === 1) {
           return {
             select: vi.fn(() => ({
@@ -179,7 +173,7 @@ describe('Authentication Middleware', () => {
             })),
           };
         }
-        
+
         if (table === 'qr_codes' && callCount === 2) {
           return {
             select: vi.fn(() => ({
@@ -196,7 +190,7 @@ describe('Authentication Middleware', () => {
             })),
           };
         }
-        
+
         if (table === 'payments' && callCount === 3) {
           return {
             select: vi.fn(() => ({
@@ -215,7 +209,7 @@ describe('Authentication Middleware', () => {
             })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -286,12 +280,10 @@ describe('Authentication Middleware', () => {
 
   describe('Public endpoints', () => {
     it('should allow unauthenticated access to public payment endpoints', async () => {
-      const response = await request(app)
-        .post('/payments/create')
-        .send({
-          amount_gross: 1000,
-          guard_id: 'guard-123',
-        });
+      const response = await request(app).post('/payments/create').send({
+        amount_gross: 1000,
+        guard_id: 'guard-123',
+      });
 
       // Should return 400 (validation error) or 500 (processing error), not 401
       expect([400, 500]).toContain(response.status);
@@ -312,7 +304,7 @@ describe('JWT Token Verification', () => {
     const userId = 'user-123';
     const token = generateTestToken(userId, 'guard');
 
-    const decoded = jwt.verify(token, TEST_JWT_SECRET) as jwt.JwtPayload;
+    const decoded = verify(token, TEST_JWT_SECRET) as JwtPayload;
     expect(decoded.sub).toBe(userId);
   });
 
@@ -320,8 +312,7 @@ describe('JWT Token Verification', () => {
     const role = 'admin';
     const token = generateTestToken('user-123', role);
 
-    const decoded = jwt.verify(token, TEST_JWT_SECRET) as jwt.JwtPayload;
+    const decoded = verify(token, TEST_JWT_SECRET) as JwtPayload;
     expect(decoded.role).toBe(role);
   });
 });
-

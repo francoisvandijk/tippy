@@ -1,7 +1,8 @@
 // Tests for payments API
 // Ledger Reference: §5 (Fees & Calculations), §7 (API Surface)
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+
 import { calculateFees, generatePaymentReference } from '../src/lib/fees';
 
 describe('Fee Calculation (Ledger §5)', () => {
@@ -53,4 +54,3 @@ describe('Payment Reference Generation', () => {
     expect(ref1).not.toBe(ref2);
   });
 });
-
