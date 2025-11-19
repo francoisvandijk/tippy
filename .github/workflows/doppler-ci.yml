@@ -25,10 +25,37 @@ jobs:
           sudo tar -C /usr/local/bin -xzf "${ARCHIVE}" doppler
           doppler --version
 
-      - name: Run Doppler test
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
         run: |
           doppler run --project tippy --config dev -- \
-          bash -lc 'echo doppler test OK'
+          npm ci
+
+      - name: Build
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
+        run: |
+          doppler run --project tippy --config dev -- \
+          npm run build
+
+      - name: Test
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
+        run: |
+          doppler run --project tippy --config dev -- \
+          npm test
+
+      - name: Lint
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
+        run: |
+          doppler run --project tippy --config dev -- \
+          npm run lint
 
