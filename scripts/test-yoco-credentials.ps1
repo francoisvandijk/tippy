@@ -36,23 +36,36 @@ try {
 Write-Host ""
 Write-Host "[2] Verifying Yoco Configuration..." -ForegroundColor Yellow
 
-$yocoPublicKey = $env:YOCO_PUBLIC_KEY
-$yocoSecretKey = $env:YOCO_SECRET_KEY
+# Determine which keys to check based on environment
+$isProduction = $Environment -eq "production"
+if ($isProduction) {
+    $yocoPublicKey = $env:YOCO_LIVE_PUBLIC_KEY
+    $yocoSecretKey = $env:YOCO_LIVE_SECRET_KEY
+    $keyType = "LIVE"
+    $publicKeyVar = "YOCO_LIVE_PUBLIC_KEY"
+    $secretKeyVar = "YOCO_LIVE_SECRET_KEY"
+} else {
+    $yocoPublicKey = $env:YOCO_TEST_PUBLIC_KEY
+    $yocoSecretKey = $env:YOCO_TEST_SECRET_KEY
+    $keyType = "TEST"
+    $publicKeyVar = "YOCO_TEST_PUBLIC_KEY"
+    $secretKeyVar = "YOCO_TEST_SECRET_KEY"
+}
 $yocoWebhookSecret = $env:YOCO_WEBHOOK_SECRET
 
 if ([string]::IsNullOrEmpty($yocoPublicKey)) {
-    Write-Host "  ✗ YOCO_PUBLIC_KEY not configured" -ForegroundColor Red
+    Write-Host "  ✗ $publicKeyVar not configured" -ForegroundColor Red
     exit 1
 } else {
-    Write-Host "  ✓ YOCO_PUBLIC_KEY configured (length: $($yocoPublicKey.Length))" -ForegroundColor Green
+    Write-Host "  ✓ $publicKeyVar configured ($keyType key, length: $($yocoPublicKey.Length))" -ForegroundColor Green
     Write-Host "    Key prefix: $($yocoPublicKey.Substring(0, [Math]::Min(10, $yocoPublicKey.Length)))..." -ForegroundColor Gray
 }
 
 if ([string]::IsNullOrEmpty($yocoSecretKey)) {
-    Write-Host "  ✗ YOCO_SECRET_KEY not configured" -ForegroundColor Red
+    Write-Host "  ✗ $secretKeyVar not configured" -ForegroundColor Red
     exit 1
 } else {
-    Write-Host "  ✓ YOCO_SECRET_KEY configured (length: $($yocoSecretKey.Length))" -ForegroundColor Green
+    Write-Host "  ✓ $secretKeyVar configured ($keyType key, length: $($yocoSecretKey.Length))" -ForegroundColor Green
     Write-Host "    Key prefix: $($yocoSecretKey.Substring(0, [Math]::Min(10, $yocoSecretKey.Length)))..." -ForegroundColor Gray
 }
 
@@ -115,4 +128,5 @@ Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "1. Test payment creation via POST /payments/create endpoint" -ForegroundColor Gray
 Write-Host "2. Verify webhook endpoint is accessible: POST /payments/webhook" -ForegroundColor Gray
 Write-Host "3. Configure webhook URL in Yoco dashboard" -ForegroundColor Gray
+
 

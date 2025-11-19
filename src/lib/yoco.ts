@@ -43,14 +43,29 @@ export class YocoClient {
   private publicKey: string;
   private secretKey: string;
   private baseUrl: string;
+  private isTestMode: boolean;
 
   constructor() {
-    this.publicKey = process.env.YOCO_PUBLIC_KEY || '';
-    this.secretKey = process.env.YOCO_SECRET_KEY || '';
+    // Determine if we're in test mode (dev/test environments use test keys)
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    this.isTestMode = nodeEnv !== 'production';
+    
+    // Select keys based on environment
+    if (this.isTestMode) {
+      this.publicKey = process.env.YOCO_TEST_PUBLIC_KEY || '';
+      this.secretKey = process.env.YOCO_TEST_SECRET_KEY || '';
+    } else {
+      this.publicKey = process.env.YOCO_LIVE_PUBLIC_KEY || '';
+      this.secretKey = process.env.YOCO_LIVE_SECRET_KEY || '';
+    }
+    
     this.baseUrl = process.env.YOCO_API_URL || 'https://online.yoco.com/api/v1';
     
     if (!this.publicKey || !this.secretKey) {
-      throw new Error('Yoco credentials not configured. Set YOCO_PUBLIC_KEY and YOCO_SECRET_KEY environment variables.');
+      const keyType = this.isTestMode ? 'test' : 'live';
+      throw new Error(
+        `Yoco ${keyType} credentials not configured. Set YOCO_${keyType.toUpperCase()}_PUBLIC_KEY and YOCO_${keyType.toUpperCase()}_SECRET_KEY environment variables.`
+      );
     }
   }
 

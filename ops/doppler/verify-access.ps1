@@ -64,11 +64,20 @@ Write-Host "`nTest 2: Runtime Consumption Test" -ForegroundColor Yellow
 
 # Create a temporary test script
 $testScript = @"
+const nodeEnv = process.env.NODE_ENV || 'development';
+const isProduction = nodeEnv === 'production';
+
 const requiredVars = [
     'TIPPY_DB_URL',
-    'TIPPY_DB_PASSWORD',
-    'TIPPY_YOCO_API_KEY'
+    'TIPPY_DB_PASSWORD'
 ];
+
+// Add Yoco keys based on environment
+if (isProduction) {
+    requiredVars.push('YOCO_LIVE_PUBLIC_KEY', 'YOCO_LIVE_SECRET_KEY');
+} else {
+    requiredVars.push('YOCO_TEST_PUBLIC_KEY', 'YOCO_TEST_SECRET_KEY');
+}
 
 let missing = [];
 for (const v of requiredVars) {

@@ -20,6 +20,6 @@
 
 5) Required keys (placeholders per env):
 
-   TIPPY_DB_URL, TIPPY_DB_PASSWORD, TIPPY_YOCO_API_KEY, TIPPY_SENDGRID_API_KEY, TIPPY_TWILIO_API_KEY, (opt) SENTRY_DSN
+   TIPPY_DB_URL, TIPPY_DB_PASSWORD, YOCO_TEST_PUBLIC_KEY, YOCO_TEST_SECRET_KEY, YOCO_LIVE_PUBLIC_KEY, YOCO_LIVE_SECRET_KEY, YOCO_WEBHOOK_SECRET, TIPPY_SENDGRID_API_KEY, TIPPY_TWILIO_API_KEY, (opt) SENTRY_DSN
 
 6) CI uses Doppler at PR runtime; no values printed. Rotation policy in ops/doppler/rotation_policy.json. POPIA: hash MSISDN; only last4 in reports.
