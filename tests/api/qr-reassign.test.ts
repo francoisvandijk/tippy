@@ -1,7 +1,9 @@
 // Tests for QR reassignment endpoint
 // Ledger Reference: §7 (API Surface), §6.4 (QR Assignment/Reassignment), §3 (Config), §9 (Payouts)
 
-import { vi } from 'vitest';
+import { sign } from 'jsonwebtoken';
+import request from 'supertest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -35,47 +37,12 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import request from 'supertest';
-import app from '../../src/server';
-import jwt from 'jsonwebtoken';
-import * as dbModule from '../../src/lib/db';
 import * as auditModule from '../../src/lib/audit';
+import * as dbModule from '../../src/lib/db';
+import app from '../../src/server';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
-
-// Helper to create a proper mock chain for Supabase queries
-const createSelectChain = (result: { data: any; error: any }) => {
-  const inChain = {
-    single: vi.fn(() => Promise.resolve(result)),
-    maybeSingle: vi.fn(() => Promise.resolve(result)),
-  };
-  
-  const eqChain = {
-    single: vi.fn(() => Promise.resolve(result)),
-    maybeSingle: vi.fn(() => Promise.resolve(result)),
-    in: vi.fn(() => inChain),
-    ilike: vi.fn(() => ({
-      maybeSingle: vi.fn(() => Promise.resolve(result)),
-      single: vi.fn(() => Promise.resolve(result)),
-    })),
-    eq: vi.fn(() => ({
-      single: vi.fn(() => Promise.resolve(result)),
-      maybeSingle: vi.fn(() => Promise.resolve(result)),
-      ilike: vi.fn(() => ({
-        maybeSingle: vi.fn(() => Promise.resolve(result)),
-      })),
-    })),
-  };
-  
-  return {
-    select: vi.fn(() => ({
-      eq: vi.fn(() => eqChain),
-      in: vi.fn(() => inChain),
-    })),
-  };
-};
 
 const createInsertChain = (result: { data: any; error: any }) => ({
   insert: vi.fn(() => Promise.resolve(result)),
@@ -91,7 +58,7 @@ const createUpdateChain = () => ({
  * Create a table-based mock implementation that dispatches by table name
  * instead of relying on call order. This makes tests resilient to auth changes
  * that may skip the users table lookup.
- * 
+ *
  * @param config - Configuration object mapping table names to their mock responses
  * @param config.users - Optional mock for users table (if auth needs to lookup role)
  * @param config.guards - Mock for guards table
@@ -109,16 +76,16 @@ function createTableBasedMock(config: {
   // Per-table call counters for tables that need multiple queries
   const qrCodesCallCount = { count: 0 };
   const payoutBatchesCallCount = { count: 0 };
-  
+
   return (table: string) => {
     if (table === 'users' && config.users) {
       return config.users();
     }
-    
+
     if (table === 'guards' && config.guards) {
       return config.guards();
     }
-    
+
     if (table === 'qr_codes' && config.qr_codes) {
       const index = qrCodesCallCount.count;
       qrCodesCallCount.count++;
@@ -126,7 +93,7 @@ function createTableBasedMock(config: {
         return config.qr_codes[index]();
       }
     }
-    
+
     if (table === 'payout_batches' && config.payout_batches) {
       const index = payoutBatchesCallCount.count;
       payoutBatchesCallCount.count++;
@@ -134,18 +101,16 @@ function createTableBasedMock(config: {
         return config.payout_batches[index]();
       }
     }
-    
+
     if (table === 'payout_batch_items' && config.payout_batch_items) {
       return config.payout_batch_items();
     }
-    
+
     // Default fallback for unmocked queries
     return {
       select: vi.fn(() => ({
         eq: vi.fn(() => ({
-          single: vi.fn(() =>
-            Promise.resolve({ data: null, error: { code: 'PGRST116' } })
-          ),
+          single: vi.fn(() => Promise.resolve({ data: null, error: { code: 'PGRST116' } })),
         })),
       })),
     };
@@ -168,14 +133,14 @@ function generateTestToken(userId: string, role?: string): string {
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour
   };
-  
+
   // Only include role if explicitly provided
   // This allows tests to control whether auth middleware hits users table
   if (role !== undefined) {
     payload.role = role;
   }
-  
-  return jwt.sign(payload, TEST_JWT_SECRET);
+
+  return sign(payload, TEST_JWT_SECRET);
 }
 
 describe('POST /qr/reassign', () => {
@@ -186,11 +151,9 @@ describe('POST /qr/reassign', () => {
 
   describe('Authentication', () => {
     it('should return 401 AUTHZ_DENIED without Authorization header', async () => {
-      const response = await request(app)
-        .post('/qr/reassign')
-        .send({
-          qr_code: 'QR123',
-        });
+      const response = await request(app).post('/qr/reassign').send({
+        qr_code: 'QR123',
+      });
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBe('AUTHZ_DENIED');
@@ -212,20 +175,22 @@ describe('POST /qr/reassign', () => {
       const adminToken = generateTestToken('admin-123', 'admin'); // Role in token, but auth may still check
 
       // Mock user lookup (auth may still verify even with role in token)
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'admin' },
-                  error: null,
-                })
-              ),
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'admin' },
+                    error: null,
+                  })
+                ),
+              })),
             })),
-          })),
-        }),
-      }));
+          }),
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -242,20 +207,22 @@ describe('POST /qr/reassign', () => {
       const referrerToken = generateTestToken('referrer-123', 'referrer'); // Role in token
 
       // Mock user lookup (auth may still verify even with role in token)
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'referrer' },
-                  error: null,
-                })
-              ),
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'referrer' },
+                    error: null,
+                  })
+                ),
+              })),
             })),
-          })),
-        }),
-      }));
+          }),
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -274,20 +241,22 @@ describe('POST /qr/reassign', () => {
       const guardToken = generateTestToken('guard-123'); // No role claim - forces users lookup
 
       // Mock user lookup
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'guard' },
+                    error: null,
+                  })
+                ),
+              })),
             })),
-          })),
-        }),
-      }));
+          }),
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -306,104 +275,106 @@ describe('POST /qr/reassign', () => {
       const currentQrId = 'qr-old-123';
       const newQrId = 'qr-new-456';
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { id: guardId, display_name: 'Test Guard', status: 'active' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        qr_codes: [
-          // 1: Find current QR
-          () => {
-            const inChain = {
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: {
-                    id: currentQrId,
-                    code: 'QR-OLD-123',
-                    short_code: 'OLD123',
-                    status: 'active',
-                  },
-                  error: null,
-                })
-              ),
-            };
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  in: vi.fn(() => inChain),
-                })),
-              })),
-            };
-          },
-          // 2: Find target QR
-          () => ({
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 single: vi.fn(() =>
                   Promise.resolve({
-                    data: {
-                      id: newQrId,
-                      code: 'QR-NEW-456',
-                      short_code: 'NEW456',
-                      status: 'unassigned',
-                      assigned_guard_id: null,
-                    },
+                    data: { role: 'guard' },
                     error: null,
                   })
                 ),
               })),
             })),
           }),
-          // 3: Update old QR
-          () => createUpdateChain(),
-          // 4: Update new QR
-          () => createUpdateChain(),
-        ],
-        payout_batches: [
-          // 1: Check for existing pending batch
-          () => {
-            const ilikeChain = {
-              maybeSingle: vi.fn(() =>
-                Promise.resolve({
-                  data: null, // No existing batch, will create new one
-                  error: null,
-                })
-              ),
-            };
-            const eqChain = {
-              ilike: vi.fn(() => ilikeChain),
-            };
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => eqChain),
+          guards: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: guardId, display_name: 'Test Guard', status: 'active' },
+                    error: null,
+                  })
+                ),
               })),
-            };
-          },
-          // 2: Create pending batch
-          () => createInsertChain({ data: { id: 'batch-123' }, error: null }),
-        ],
-        payout_batch_items: () => createInsertChain({ data: { id: 'item-123' }, error: null }),
-      }));
+            })),
+          }),
+          qr_codes: [
+            // 1: Find current QR
+            () => {
+              const inChain = {
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: currentQrId,
+                      code: 'QR-OLD-123',
+                      short_code: 'OLD123',
+                      status: 'active',
+                    },
+                    error: null,
+                  })
+                ),
+              };
+              return {
+                select: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn(() => inChain),
+                  })),
+                })),
+              };
+            },
+            // 2: Find target QR
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: {
+                        id: newQrId,
+                        code: 'QR-NEW-456',
+                        short_code: 'NEW456',
+                        status: 'unassigned',
+                        assigned_guard_id: null,
+                      },
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            }),
+            // 3: Update old QR
+            () => createUpdateChain(),
+            // 4: Update new QR
+            () => createUpdateChain(),
+          ],
+          payout_batches: [
+            // 1: Check for existing pending batch
+            () => {
+              const ilikeChain = {
+                maybeSingle: vi.fn(() =>
+                  Promise.resolve({
+                    data: null, // No existing batch, will create new one
+                    error: null,
+                  })
+                ),
+              };
+              const eqChain = {
+                ilike: vi.fn(() => ilikeChain),
+              };
+              return {
+                select: vi.fn(() => ({
+                  eq: vi.fn(() => eqChain),
+                })),
+              };
+            },
+            // 2: Create pending batch
+            () => createInsertChain({ data: { id: 'batch-123' }, error: null }),
+          ],
+          payout_batch_items: () => createInsertChain({ data: { id: 'item-123' }, error: null }),
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -425,100 +396,102 @@ describe('POST /qr/reassign', () => {
       const currentQrId = 'qr-old-123';
       const newQrId = 'qr-new-456';
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { id: guardId, display_name: 'Test Guard', status: 'active' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        qr_codes: [
-          // 1: Find current QR
-          () => {
-            const inChain = {
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: {
-                    id: currentQrId,
-                    code: 'QR-OLD-123',
-                    short_code: 'OLD123',
-                    status: 'assigned',
-                  },
-                  error: null,
-                })
-              ),
-            };
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  in: vi.fn(() => inChain),
-                })),
-              })),
-            };
-          },
-          // 2: Find target QR
-          () => ({
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 single: vi.fn(() =>
                   Promise.resolve({
-                    data: {
-                      id: newQrId,
-                      code: 'QR-NEW-456',
-                      short_code: 'NEW456',
-                      status: 'unassigned',
-                      assigned_guard_id: null,
-                    },
+                    data: { role: 'guard' },
                     error: null,
                   })
                 ),
               })),
             })),
           }),
-          // 3: Update old QR
-          () => createUpdateChain(),
-          // 4: Update new QR
-          () => createUpdateChain(),
-        ],
-        payout_batches: [
-          // 1: Check for existing pending batch
-          () => ({
+          guards: () => ({
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
-                ilike: vi.fn(() => ({
-                  maybeSingle: vi.fn(() =>
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: guardId, display_name: 'Test Guard', status: 'active' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          }),
+          qr_codes: [
+            // 1: Find current QR
+            () => {
+              const inChain = {
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: currentQrId,
+                      code: 'QR-OLD-123',
+                      short_code: 'OLD123',
+                      status: 'assigned',
+                    },
+                    error: null,
+                  })
+                ),
+              };
+              return {
+                select: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn(() => inChain),
+                  })),
+                })),
+              };
+            },
+            // 2: Find target QR
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
                     Promise.resolve({
-                      data: null, // No existing batch, will create new one
+                      data: {
+                        id: newQrId,
+                        code: 'QR-NEW-456',
+                        short_code: 'NEW456',
+                        status: 'unassigned',
+                        assigned_guard_id: null,
+                      },
                       error: null,
                     })
                   ),
                 })),
               })),
-            })),
-          }),
-          // 2: Create pending batch
-          () => createInsertChain({ data: { id: 'batch-123' }, error: null }),
-        ],
-        payout_batch_items: () => createInsertChain({ data: { id: 'item-123' }, error: null }),
-      }));
+            }),
+            // 3: Update old QR
+            () => createUpdateChain(),
+            // 4: Update new QR
+            () => createUpdateChain(),
+          ],
+          payout_batches: [
+            // 1: Check for existing pending batch
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  ilike: vi.fn(() => ({
+                    maybeSingle: vi.fn(() =>
+                      Promise.resolve({
+                        data: null, // No existing batch, will create new one
+                        error: null,
+                      })
+                    ),
+                  })),
+                })),
+              })),
+            }),
+            // 2: Create pending batch
+            () => createInsertChain({ data: { id: 'batch-123' }, error: null }),
+          ],
+          payout_batch_items: () => createInsertChain({ data: { id: 'item-123' }, error: null }),
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -536,32 +509,34 @@ describe('POST /qr/reassign', () => {
     it('should return 404 if guard not found', async () => {
       const guardToken = generateTestToken('guard-123'); // No role claim - forces users lookup
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'guard' },
+                    error: null,
+                  })
+                ),
+              })),
             })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: null,
-                  error: { code: 'PGRST116' },
-                })
-              ),
+          }),
+          guards: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: null,
+                    error: { code: 'PGRST116' },
+                  })
+                ),
+              })),
             })),
-          })),
-        }),
-      }));
+          }),
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -578,32 +553,34 @@ describe('POST /qr/reassign', () => {
       const guardId = 'guard-123';
       const guardToken = generateTestToken(guardId); // No role claim - forces users lookup
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'guard' },
+                    error: null,
+                  })
+                ),
+              })),
             })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { id: guardId, display_name: 'Test Guard', status: 'pending' },
-                  error: null,
-                })
-              ),
+          }),
+          guards: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: guardId, display_name: 'Test Guard', status: 'pending' },
+                    error: null,
+                  })
+                ),
+              })),
             })),
-          })),
-        }),
-      }));
+          }),
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -621,52 +598,54 @@ describe('POST /qr/reassign', () => {
       const guardId = 'guard-123';
       const guardToken = generateTestToken(guardId); // No role claim - forces users lookup
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { id: guardId, display_name: 'Test Guard', status: 'active' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        qr_codes: [
-          // 1: Find current QR - not found
-          () => {
-            const inChain = {
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: null,
-                  error: { code: 'PGRST116' },
-                })
-              ),
-            };
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  in: vi.fn(() => inChain),
-                })),
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'guard' },
+                    error: null,
+                  })
+                ),
               })),
-            };
-          },
-        ],
-      }));
+            })),
+          }),
+          guards: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: guardId, display_name: 'Test Guard', status: 'active' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          }),
+          qr_codes: [
+            // 1: Find current QR - not found
+            () => {
+              const inChain = {
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: null,
+                    error: { code: 'PGRST116' },
+                  })
+                ),
+              };
+              return {
+                select: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn(() => inChain),
+                  })),
+                })),
+              };
+            },
+          ],
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -685,66 +664,68 @@ describe('POST /qr/reassign', () => {
       const guardToken = generateTestToken(guardId); // No role claim - forces users lookup
       const currentQrId = 'qr-old-123';
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { id: guardId, display_name: 'Test Guard', status: 'active' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        qr_codes: [
-          // 1: Find current QR
-          () => ({
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                in: vi.fn(() => ({
-                  single: vi.fn(() =>
-                    Promise.resolve({
-                      data: {
-                        id: currentQrId,
-                        code: 'QR-OLD-123',
-                        status: 'active',
-                      },
-                      error: null,
-                    })
-                  ),
-                })),
-              })),
-            })),
-          }),
-          // 2: Find target QR - not found
-          () => ({
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 single: vi.fn(() =>
                   Promise.resolve({
-                    data: null,
-                    error: { code: 'PGRST116' },
+                    data: { role: 'guard' },
+                    error: null,
                   })
                 ),
               })),
             })),
           }),
-        ],
-      }));
+          guards: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: guardId, display_name: 'Test Guard', status: 'active' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          }),
+          qr_codes: [
+            // 1: Find current QR
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  in: vi.fn(() => ({
+                    single: vi.fn(() =>
+                      Promise.resolve({
+                        data: {
+                          id: currentQrId,
+                          code: 'QR-OLD-123',
+                          status: 'active',
+                        },
+                        error: null,
+                      })
+                    ),
+                  })),
+                })),
+              })),
+            }),
+            // 2: Find target QR - not found
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: null,
+                      error: { code: 'PGRST116' },
+                    })
+                  ),
+                })),
+              })),
+            }),
+          ],
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -764,74 +745,76 @@ describe('POST /qr/reassign', () => {
       const currentQrId = 'qr-old-123';
       const newQrId = 'qr-new-456';
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { id: guardId, display_name: 'Test Guard', status: 'active' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        qr_codes: [
-          // 1: Find current QR
-          () => {
-            const inChain = {
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: {
-                    id: currentQrId,
-                    code: 'QR-OLD-123',
-                    status: 'active',
-                  },
-                  error: null,
-                })
-              ),
-            };
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  in: vi.fn(() => inChain),
-                })),
-              })),
-            };
-          },
-          // 2: Find target QR - already assigned
-          () => ({
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 single: vi.fn(() =>
                   Promise.resolve({
-                    data: {
-                      id: newQrId,
-                      code: 'QR-NEW-456',
-                      status: 'assigned', // Already assigned
-                      assigned_guard_id: 'other-guard',
-                    },
+                    data: { role: 'guard' },
                     error: null,
                   })
                 ),
               })),
             })),
           }),
-        ],
-      }));
+          guards: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: guardId, display_name: 'Test Guard', status: 'active' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          }),
+          qr_codes: [
+            // 1: Find current QR
+            () => {
+              const inChain = {
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: currentQrId,
+                      code: 'QR-OLD-123',
+                      status: 'active',
+                    },
+                    error: null,
+                  })
+                ),
+              };
+              return {
+                select: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn(() => inChain),
+                  })),
+                })),
+              };
+            },
+            // 2: Find target QR - already assigned
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: {
+                        id: newQrId,
+                        code: 'QR-NEW-456',
+                        status: 'assigned', // Already assigned
+                        assigned_guard_id: 'other-guard',
+                      },
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            }),
+          ],
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -850,74 +833,76 @@ describe('POST /qr/reassign', () => {
       const guardToken = generateTestToken(guardId); // No role claim - forces users lookup
       const currentQrId = 'qr-same-123';
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { id: guardId, display_name: 'Test Guard', status: 'active' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        qr_codes: [
-          // 1: Find current QR
-          () => {
-            const inChain = {
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: {
-                    id: currentQrId,
-                    code: 'QR-SAME-123',
-                    status: 'active',
-                  },
-                  error: null,
-                })
-              ),
-            };
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  in: vi.fn(() => inChain),
-                })),
-              })),
-            };
-          },
-          // 2: Find target QR - same as current
-          () => ({
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 single: vi.fn(() =>
                   Promise.resolve({
-                    data: {
-                      id: currentQrId, // Same QR
-                      code: 'QR-SAME-123',
-                      status: 'unassigned',
-                      assigned_guard_id: null,
-                    },
+                    data: { role: 'guard' },
                     error: null,
                   })
                 ),
               })),
             })),
           }),
-        ],
-      }));
+          guards: () => ({
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: guardId, display_name: 'Test Guard', status: 'active' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          }),
+          qr_codes: [
+            // 1: Find current QR
+            () => {
+              const inChain = {
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: currentQrId,
+                      code: 'QR-SAME-123',
+                      status: 'active',
+                    },
+                    error: null,
+                  })
+                ),
+              };
+              return {
+                select: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn(() => inChain),
+                  })),
+                })),
+              };
+            },
+            // 2: Find target QR - same as current
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: {
+                        id: currentQrId, // Same QR
+                        code: 'QR-SAME-123',
+                        status: 'unassigned',
+                        assigned_guard_id: null,
+                      },
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            }),
+          ],
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -939,98 +924,100 @@ describe('POST /qr/reassign', () => {
       const currentQrId = 'qr-old-123';
       const newQrId = 'qr-new-456';
 
-      mockSupabaseFrom.mockImplementation(createTableBasedMock({
-        users: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { role: 'guard' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        guards: () => ({
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: { id: guardId, display_name: 'Test Guard', status: 'active' },
-                  error: null,
-                })
-              ),
-            })),
-          })),
-        }),
-        qr_codes: [
-          // 1: Find current QR
-          () => {
-            const inChain = {
-              single: vi.fn(() =>
-                Promise.resolve({
-                  data: {
-                    id: currentQrId,
-                    code: 'QR-OLD-123',
-                    status: 'active',
-                  },
-                  error: null,
-                })
-              ),
-            };
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  in: vi.fn(() => inChain),
-                })),
-              })),
-            };
-          },
-          // 2: Find target QR
-          () => ({
+      mockSupabaseFrom.mockImplementation(
+        createTableBasedMock({
+          users: () => ({
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 single: vi.fn(() =>
                   Promise.resolve({
-                    data: {
-                      id: newQrId,
-                      code: 'QR-NEW-456',
-                      status: 'unassigned',
-                      assigned_guard_id: null,
-                    },
+                    data: { role: 'guard' },
                     error: null,
                   })
                 ),
               })),
             })),
           }),
-          // 3: Update old QR
-          () => createUpdateChain(),
-          // 4: Update new QR
-          () => createUpdateChain(),
-        ],
-        payout_batches: [
-          // 1: Check for existing pending batch
-          () => ({
+          guards: () => ({
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
-                ilike: vi.fn(() => ({
-                  maybeSingle: vi.fn(() =>
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: guardId, display_name: 'Test Guard', status: 'active' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          }),
+          qr_codes: [
+            // 1: Find current QR
+            () => {
+              const inChain = {
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: currentQrId,
+                      code: 'QR-OLD-123',
+                      status: 'active',
+                    },
+                    error: null,
+                  })
+                ),
+              };
+              return {
+                select: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn(() => inChain),
+                  })),
+                })),
+              };
+            },
+            // 2: Find target QR
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(() =>
                     Promise.resolve({
-                      data: null, // No existing batch, will create new one
+                      data: {
+                        id: newQrId,
+                        code: 'QR-NEW-456',
+                        status: 'unassigned',
+                        assigned_guard_id: null,
+                      },
                       error: null,
                     })
                   ),
                 })),
               })),
-            })),
-          }),
-          // 2: Create pending batch
-          () => createInsertChain({ data: { id: 'batch-123' }, error: null }),
-        ],
-        payout_batch_items: () => createInsertChain({ data: { id: 'item-123' }, error: null }),
-      }));
+            }),
+            // 3: Update old QR
+            () => createUpdateChain(),
+            // 4: Update new QR
+            () => createUpdateChain(),
+          ],
+          payout_batches: [
+            // 1: Check for existing pending batch
+            () => ({
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  ilike: vi.fn(() => ({
+                    maybeSingle: vi.fn(() =>
+                      Promise.resolve({
+                        data: null, // No existing batch, will create new one
+                        error: null,
+                      })
+                    ),
+                  })),
+                })),
+              })),
+            }),
+            // 2: Create pending batch
+            () => createInsertChain({ data: { id: 'batch-123' }, error: null }),
+          ],
+          payout_batch_items: () => createInsertChain({ data: { id: 'item-123' }, error: null }),
+        })
+      );
 
       const response = await request(app)
         .post('/qr/reassign')
@@ -1049,4 +1036,3 @@ describe('POST /qr/reassign', () => {
     });
   });
 });
-

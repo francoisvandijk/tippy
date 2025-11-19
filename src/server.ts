@@ -1,24 +1,25 @@
 // Main server entry point
 // Ledger Reference: §7 (API Surface), §15 (Environments & Deployment)
 
-import express from 'express';
-import paymentsRouter from './api/routes/payments';
-import yocoWebhookRouter from './api/routes/yoco-webhook';
-import guardsRouter from './api/routes/guards';
-import referrersRouter from './api/routes/referrers';
+import express, { json, urlencoded } from 'express';
+
 import adminRouter from './api/routes/admin';
+import guardsRouter from './api/routes/guards';
+import paymentsRouter from './api/routes/payments';
 import qrRouter from './api/routes/qr';
+import referrersRouter from './api/routes/referrers';
+import yocoWebhookRouter from './api/routes/yoco-webhook';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(json({ limit: '10mb' }));
+app.use(urlencoded({ extended: true }));
 
 // Request logging (no PII per Ledger §13)
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  console.warn(`${new Date().toISOString()} ${req.method} ${req.path}`);
   next();
 });
 
@@ -45,7 +46,7 @@ app.use('/referrers', referrersRouter);
 app.use('/admin', adminRouter);
 
 // Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     error: 'PROCESSOR_ERROR',
@@ -56,10 +57,9 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // Start server
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Tippy API server listening on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.warn(`Tippy API server listening on port ${PORT}`);
+    console.warn(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
 export default app;
-

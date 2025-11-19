@@ -2,7 +2,8 @@
 // Ledger Reference: §2 (Roles & Access), §8 (RLS / Security), §13 (POPIA & Security)
 
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { JsonWebTokenError, TokenExpiredError, verify, type JwtPayload } from 'jsonwebtoken';
+
 import { supabase } from './db';
 
 export type UserRole = 'admin' | 'referrer' | 'guard' | 'internal';
@@ -13,6 +14,7 @@ export interface AuthUser {
 }
 
 // Extend Express Request to include auth
+/* eslint-disable @typescript-eslint/no-namespace */
 declare global {
   namespace Express {
     interface Request {
@@ -20,6 +22,7 @@ declare global {
     }
   }
 }
+/* eslint-enable @typescript-eslint/no-namespace */
 
 /**
  * Verify Supabase JWT token
@@ -54,17 +57,17 @@ export async function verifySupabaseToken(
   const jwtAudience = process.env.SUPABASE_JWT_AUDIENCE;
 
   // Verify and decode JWT
-  let decoded: jwt.JwtPayload;
+  let decoded: JwtPayload;
   try {
-    decoded = jwt.verify(token, jwtSecret, {
+    decoded = verify(token, jwtSecret, {
       issuer: jwtIssuer,
       audience: jwtAudience,
-    }) as jwt.JwtPayload;
+    }) as JwtPayload;
   } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
+    if (error instanceof JsonWebTokenError) {
       throw new Error(`Invalid token: ${error.message}`);
     }
-    if (error instanceof jwt.TokenExpiredError) {
+    if (error instanceof TokenExpiredError) {
       throw new Error('Token expired');
     }
     throw new Error('Token verification failed');
@@ -196,4 +199,3 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction): v
       next();
     });
 }
-

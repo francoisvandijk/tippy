@@ -97,7 +97,7 @@ export async function sendSms(options: SendSmsOptions): Promise<SmsResult> {
         const result = await sendViaSendGrid(phoneNumber, message);
         providerMessageId = result.messageId;
         providerResponse = result.response;
-        
+
         if (!result.success) {
           throw new Error(result.error || 'SendGrid API error');
         }
@@ -105,7 +105,7 @@ export async function sendSms(options: SendSmsOptions): Promise<SmsResult> {
         const result = await sendViaTwilio(phoneNumber, message);
         providerMessageId = result.messageId;
         providerResponse = result.response;
-        
+
         if (!result.success) {
           throw new Error(result.error || 'Twilio API error');
         }
@@ -168,10 +168,7 @@ export async function sendSms(options: SendSmsOptions): Promise<SmsResult> {
 /**
  * Send SMS via SendGrid
  */
-async function sendViaSendGrid(
-  phoneNumber: string,
-  message: string
-): Promise<SmsProviderResponse> {
+async function sendViaSendGrid(phoneNumber: string, message: string): Promise<SmsProviderResponse> {
   const apiKey = process.env.SENDGRID_API_KEY;
   if (!apiKey) {
     return { success: false, error: 'SENDGRID_API_KEY not configured' };
@@ -181,7 +178,7 @@ async function sendViaSendGrid(
     const response = await fetch('https://api.sendgrid.com/v3/messages/send', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -200,7 +197,7 @@ async function sendViaSendGrid(
       }),
     });
 
-    const responseData = await response.json() as Record<string, unknown>;
+    const responseData = (await response.json()) as Record<string, unknown>;
 
     if (!response.ok) {
       return {
@@ -226,10 +223,7 @@ async function sendViaSendGrid(
 /**
  * Send SMS via Twilio
  */
-async function sendViaTwilio(
-  phoneNumber: string,
-  message: string
-): Promise<SmsProviderResponse> {
+async function sendViaTwilio(phoneNumber: string, message: string): Promise<SmsProviderResponse> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromPhone = process.env.TWILIO_PHONE_NUMBER || process.env.WELCOME_SMS_SENDER_ID;
@@ -249,13 +243,13 @@ async function sendViaTwilio(
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: body.toString(),
     });
 
-    const responseData = await response.json() as Record<string, unknown>;
+    const responseData = (await response.json()) as Record<string, unknown>;
 
     if (!response.ok) {
       return {
@@ -306,7 +300,8 @@ export async function sendWelcomeSms(
 
   const language = guard.language || 'en';
   const payoutDay = options?.payoutDay || process.env.PAYOUT_WEEKLY_SCHEDULE || 'Friday';
-  const supportNumber = options?.supportNumber || process.env.SUPPORT_PHONE_NUMBER || '060-123-4567';
+  const supportNumber =
+    options?.supportNumber || process.env.SUPPORT_PHONE_NUMBER || '060-123-4567';
 
   // Get phone number (required)
   const phoneNumber = guard.msisdn;
@@ -325,7 +320,7 @@ export async function sendWelcomeSms(
   // Ensure message is ≤160 chars per Ledger §24.3
   if (message.length > 160) {
     // Truncate if needed
-    const truncated = message.substring(0, 157) + '...';
+    const _truncated = message.substring(0, 157) + '...';
     console.warn(`Welcome SMS message truncated from ${message.length} to 160 chars`);
   }
 
@@ -343,7 +338,3 @@ export async function sendWelcomeSms(
     },
   });
 }
-
-
-
-

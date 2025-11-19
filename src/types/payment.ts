@@ -1,5 +1,11 @@
 // Payment types per Ledger §4 and §5
-export type PaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'refunded' | 'cancelled';
+export type PaymentStatus =
+  | 'pending'
+  | 'processing'
+  | 'succeeded'
+  | 'failed'
+  | 'refunded'
+  | 'cancelled';
 
 export interface Payment {
   id: string;
@@ -47,4 +53,3 @@ export interface PaymentResponse {
   amount_net: number;
   created_at: string;
 }
-

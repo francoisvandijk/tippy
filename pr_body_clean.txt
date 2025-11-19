@@ -1,0 +1,21 @@
+This PR contains only the UNIQUE commits from feature/phase2-p1-remediation, excluding duplicates already present in origin/main.
+
+## Commit Classification
+
+### Unique Commits Included (2):
+- `ef952f5` - governance: Phase 2 close-out — audit log and summary
+- `d61e449` - chore: log Phase 2 close-out in Doppler audit log
+
+### Duplicate Commits Excluded (2):
+- `4caba9e` - Phase 2 P1 Remediation DB Schema Build Tests Env (#21) - Already in main
+- `ac6d6a6` - chore(db): add core schema migrations for phase 2 - Already in main
+
+## Note
+The unique commits result in minor deletions (5 lines) as they represent older versions of files that have since been updated in main. These deletions remove:
+- Outdated verification items from governance doc
+- Redundant audit log entry (PR #21 info already in main)
+
+See COMMIT_ANALYSIS_REPORT.md for full analysis.
+
+
+

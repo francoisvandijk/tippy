@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+*.js
+*.cjs
+*.config.js
+*.config.cjs
+tests/**/*.js
+tests/**/*.d.ts
+tests/**/*.js.map
+tests/**/*.d.ts.map
+

@@ -6,13 +6,14 @@
 //   - Generates weekly payout batch per Ledger §9
 //   - Creates CSV export and emails to admin
 
+import { randomUUID } from 'crypto';
+
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { supabase } from '../../lib/db';
-import { requireAuth, requireRole } from '../../lib/auth';
+
 import { logAuditEvent } from '../../lib/audit';
-import { calculateFees } from '../../lib/fees';
-import { randomUUID } from 'crypto';
+import { requireAuth, requireRole } from '../../lib/auth';
+import { supabase } from '../../lib/db';
 
 const router = Router();
 
@@ -21,7 +22,7 @@ const router = Router();
  * Generate weekly payout batch
  * Per Ledger §7: Admin endpoint
  * Per Ledger §9: Weekly payouts (Sat 00:00 → Fri 23:59, processed Sunday)
- * 
+ *
  * Auth: Requires 'admin' role (Ledger §2.4, §8)
  */
 const generatePayoutSchema = z.object({
@@ -51,14 +52,14 @@ router.post(
       // Calculate payout period (previous Sat 00:00 → Fri 23:59)
       const now = new Date();
       const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
-      
+
       // Find previous Saturday
       const daysSinceSaturday = dayOfWeek === 0 ? 1 : dayOfWeek === 6 ? 7 : dayOfWeek + 1;
-      const periodStart = period_start_date 
+      const periodStart = period_start_date
         ? new Date(period_start_date)
         : new Date(now.getTime() - daysSinceSaturday * 24 * 60 * 60 * 1000);
       periodStart.setHours(0, 0, 0, 0);
-      
+
       // Find previous Friday (day before Saturday)
       const periodEnd = period_end_date
         ? new Date(period_end_date)
@@ -86,7 +87,7 @@ router.post(
       // Create payout batch
       const batchId = randomUUID();
       const batchNumber = `TPY-PAYOUT-${periodStart.toISOString().slice(0, 10).replace(/-/g, '')}-${batchId.slice(0, 8).toUpperCase()}`;
-      
+
       const { data: batch, error: batchError } = await supabase
         .from('payout_batches')
         .insert({
@@ -101,7 +102,7 @@ router.post(
         .single();
 
       if (batchError || !batch) {
-        console.error("[admin] Error creating payout batch", batchError?.message);
+        console.error('[admin] Error creating payout batch', batchError?.message);
         return res.status(500).json({
           error: 'PROCESSOR_ERROR',
           message: 'Failed to create payout batch',
@@ -120,11 +121,8 @@ router.post(
         .eq('status', 'active');
 
       if (guardsError) {
-        console.error("[admin] Error fetching eligible guards", guardsError?.message);
-        await supabase
-          .from('payout_batches')
-          .update({ status: 'failed' })
-          .eq('id', batchId);
+        console.error('[admin] Error fetching eligible guards', guardsError?.message);
+        await supabase.from('payout_batches').update({ status: 'failed' }).eq('id', batchId);
         return res.status(500).json({
           error: 'PROCESSOR_ERROR',
           message: 'Failed to fetch eligible guards',
@@ -132,7 +130,7 @@ router.post(
       }
 
       // Get guard IDs for eligible guards
-      const eligibleGuardIds = (eligibleGuards || []).map(g => g.id);
+      const eligibleGuardIds = (eligibleGuards || []).map((g) => g.id);
 
       // Find all pending QR_REPLACEMENT items for eligible guards
       // These are fees created during QR reassignment (POST /qr/reassign) that need to be deducted
@@ -155,7 +153,7 @@ router.post(
           .in('guard_id', eligibleGuardIds);
 
         if (qrFeesError) {
-          console.error("[admin] Error fetching pending QR replacement fees", qrFeesError?.message);
+          console.error('[admin] Error fetching pending QR replacement fees', qrFeesError?.message);
           // Non-blocking: continue with payout generation even if QR fee lookup fails
         } else if (pendingQrFees) {
           pendingQrReplacementFees = pendingQrFees;
@@ -189,11 +187,11 @@ router.post(
         if (unpaidBalance >= payoutMinEligibility) {
           // Get total QR replacement fees for this guard
           const qrReplacementFeesTotal = qrFeesByGuard.get(guard.id) || 0;
-          
+
           // Calculate net amount after CashSend fee and QR replacement fees
           // Per Ledger §9: QR_REPLACEMENT fees are deducted from the guard's payout
           const netAmount = unpaidBalance - cashSendFee - qrReplacementFeesTotal;
-          
+
           if (netAmount > 0) {
             // Add GUARD payout item
             payoutItems.push({
@@ -216,8 +214,10 @@ router.post(
       // This ensures idempotency: re-running payout generation won't double-deduct fees
       for (const qrFee of pendingQrReplacementFees) {
         // Only update QR fees for guards that are eligible and have a payout item
-        const guardHasPayout = payoutItems.some(item => item.guard_id === qrFee.guard_id && item.item_type === 'GUARD');
-        
+        const guardHasPayout = payoutItems.some(
+          (item) => item.guard_id === qrFee.guard_id && item.item_type === 'GUARD'
+        );
+
         if (guardHasPayout) {
           // Update the QR replacement fee item to reference this payout batch
           // This marks it as processed and prevents double-deduction
@@ -230,7 +230,10 @@ router.post(
             .eq('id', qrFee.id);
 
           if (updateQrFeeError) {
-            console.error("[admin] Error updating QR replacement fee item", updateQrFeeError?.message);
+            console.error(
+              '[admin] Error updating QR replacement fee item',
+              updateQrFeeError?.message
+            );
             // Non-blocking: continue even if QR fee update fails
           }
         }
@@ -238,18 +241,15 @@ router.post(
 
       // Insert new payout items (GUARD items only)
       // QR_REPLACEMENT items are already in the database, we just update their batch reference
-      const newPayoutItems = payoutItems.filter(item => item.item_type === 'GUARD');
+      const newPayoutItems = payoutItems.filter((item) => item.item_type === 'GUARD');
       if (newPayoutItems.length > 0) {
         const { error: itemsError } = await supabase
           .from('payout_batch_items')
           .insert(newPayoutItems);
 
         if (itemsError) {
-          console.error("[admin] Error creating payout items", itemsError?.message);
-          await supabase
-            .from('payout_batches')
-            .update({ status: 'failed' })
-            .eq('id', batchId);
+          console.error('[admin] Error creating payout items', itemsError?.message);
+          await supabase.from('payout_batches').update({ status: 'failed' }).eq('id', batchId);
           return res.status(500).json({
             error: 'PROCESSOR_ERROR',
             message: 'Failed to create payout items',
@@ -269,7 +269,7 @@ router.post(
         .eq('id', batchId);
 
       if (updateError) {
-        console.error("[admin] Error updating batch", updateError?.message);
+        console.error('[admin] Error updating batch', updateError?.message);
       }
 
       // Generate CSV (simplified - in production, use proper CSV library)
@@ -277,24 +277,26 @@ router.post(
       const csvRows: string[] = [
         'Guard ID,Item Type,Net Amount (ZAR cents),CashSend Fee (ZAR cents),Total Amount (ZAR cents)',
       ];
-      
+
       // Add GUARD items
       for (const item of payoutItems) {
         csvRows.push(
           `${item.guard_id},${item.item_type},${item.net_amount_zar_cents},${item.cashsend_fee_zar_cents},${item.amount_zar_cents}`
         );
       }
-      
+
       // Add QR_REPLACEMENT items for reference (these are deductions, already included in GUARD net amounts)
       for (const qrFee of pendingQrReplacementFees) {
-        const guardHasPayout = payoutItems.some(item => item.guard_id === qrFee.guard_id && item.item_type === 'GUARD');
+        const guardHasPayout = payoutItems.some(
+          (item) => item.guard_id === qrFee.guard_id && item.item_type === 'GUARD'
+        );
         if (guardHasPayout) {
           csvRows.push(
             `${qrFee.guard_id},QR_REPLACEMENT,${qrFee.net_amount_zar_cents},0,${qrFee.amount_zar_cents}`
           );
         }
       }
-      
+
       const csvContent = csvRows.join('\n');
 
       // TODO: Email CSV to admin (per Ledger §9 - Tier-3 automation)
@@ -320,7 +322,10 @@ router.post(
           },
         });
       } catch (auditError) {
-        console.error("[admin] Audit logging error", auditError instanceof Error ? auditError.message : String(auditError));
+        console.error(
+          '[admin] Audit logging error',
+          auditError instanceof Error ? auditError.message : String(auditError)
+        );
         // Non-blocking
       }
 
@@ -337,7 +342,7 @@ router.post(
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error("[admin] Payout generation error", errorMessage);
+      console.error('[admin] Payout generation error', errorMessage);
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
         message: 'Failed to generate payout batch',
@@ -347,4 +352,3 @@ router.post(
 );
 
 export default router;
-
