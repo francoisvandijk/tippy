@@ -14,9 +14,10 @@ CREATE TABLE IF NOT EXISTS payments (
     yoco_payment_id VARCHAR(255),
     
     -- Relationships
-    guard_id UUID NOT NULL REFERENCES guards(id) ON DELETE RESTRICT,
-    qr_code_id UUID REFERENCES qr_codes(id) ON DELETE SET NULL,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    -- Note: Foreign key constraints added in later migration (0037) after referenced tables exist
+    guard_id UUID NOT NULL,
+    qr_code_id UUID,
+    user_id UUID,
     
     -- Amounts (all in ZAR cents)
     amount_gross BIGINT NOT NULL CHECK (amount_gross > 0),
@@ -48,7 +49,8 @@ CREATE TABLE IF NOT EXISTS payments (
     failed_at TIMESTAMPTZ,
     
     -- Payout linkage
-    payout_batch_id UUID REFERENCES payout_batches(id) ON DELETE SET NULL,
+    -- Note: Foreign key constraint added in later migration (0037) after payout_batches table exists
+    payout_batch_id UUID,
     
     -- Audit
     audit_log JSONB
