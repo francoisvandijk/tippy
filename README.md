@@ -26,7 +26,7 @@ All configuration via environment variables (Doppler per §25):
 
 See `.env.example` for a complete list of all required environment variables. This file lists all variable names with obvious placeholders—no real secrets are included.
 
-**Note**: Real values are managed via Doppler per Ledger §25. For local development, copy `.env.example` to `.env.local` (gitignored) and fill in your values.
+**Note**: Real values are managed via Doppler per Ledger §25. For local development, use Doppler CLI (`doppler run`) or copy `.env.example` to `.env.local` (gitignored) and fill in your values. Doppler is preferred per §25.
 
 Key variables include:
 - `SUPABASE_URL` / `DB_URL` — Database connection URL
