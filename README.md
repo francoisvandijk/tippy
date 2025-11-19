@@ -26,8 +26,10 @@ All configuration via environment variables (Doppler):
 
 - `SUPABASE_URL` / `DB_URL` — Database connection URL
 - `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` — Database API key
-- `YOCO_PUBLIC_KEY` — Yoco public API key
-- `YOCO_SECRET_KEY` — Yoco secret API key
+- `YOCO_TEST_PUBLIC_KEY` — Yoco test public API key (dev/test environments)
+- `YOCO_TEST_SECRET_KEY` — Yoco test secret API key (dev/test environments)
+- `YOCO_LIVE_PUBLIC_KEY` — Yoco live public API key (production)
+- `YOCO_LIVE_SECRET_KEY` — Yoco live secret API key (production)
 - `YOCO_WEBHOOK_SECRET` — Yoco webhook signature secret
 - `YOCO_FEE_PERCENT` — Yoco fee percentage (default: 0.00)
 - `PLATFORM_FEE_PERCENT` — Platform fee percentage (default: 10.00)

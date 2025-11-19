@@ -42,10 +42,14 @@ This PR sets up Doppler for secure secrets management across all Tippy environme
 
 ### Secret Structure
 
-All secrets use `TIPPY_` prefix and `snake_case`:
+All secrets use `TIPPY_` prefix and `snake_case` (except Yoco keys which use direct naming):
 - `TIPPY_DB_URL`
 - `TIPPY_DB_PASSWORD`
-- `TIPPY_YOCO_API_KEY`
+- `YOCO_TEST_PUBLIC_KEY` (dev/test environments)
+- `YOCO_TEST_SECRET_KEY` (dev/test environments)
+- `YOCO_LIVE_PUBLIC_KEY` (production)
+- `YOCO_LIVE_SECRET_KEY` (production)
+- `YOCO_WEBHOOK_SECRET`
 - `TIPPY_SENDGRID_API_KEY`
 - `TIPPY_TWILIO_API_KEY`
 - `GITHUB_OAUTH_CLIENT_SECRET`

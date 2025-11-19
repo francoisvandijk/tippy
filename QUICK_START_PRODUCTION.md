@@ -24,10 +24,14 @@ doppler secrets set SUPABASE_SERVICE_ROLE_KEY="xxx" --project tippy --config pro
 doppler secrets set SUPABASE_DB_URL="postgresql://..." --project tippy --config production
 doppler secrets set SUPABASE_JWT_SECRET="xxx" --project tippy --config production
 
-# Yoco
-doppler secrets set YOCO_PUBLIC_KEY="pk_live_xxx" --project tippy --config production
-doppler secrets set YOCO_SECRET_KEY="sk_live_xxx" --project tippy --config production
+# Yoco (Production - Live Keys)
+doppler secrets set YOCO_LIVE_PUBLIC_KEY="pk_live_xxx" --project tippy --config production
+doppler secrets set YOCO_LIVE_SECRET_KEY="sk_live_xxx" --project tippy --config production
 doppler secrets set YOCO_WEBHOOK_SECRET="xxx" --project tippy --config production
+
+# Yoco (Development/Test - Test Keys)
+doppler secrets set YOCO_TEST_PUBLIC_KEY="pk_test_xxx" --project tippy --config development
+doppler secrets set YOCO_TEST_SECRET_KEY="sk_test_xxx" --project tippy --config development
 
 # SendGrid
 doppler secrets set SENDGRID_API_KEY="SG.xxx" --project tippy --config production
@@ -124,4 +128,5 @@ All steps complete when:
 ---
 
 **Ready to deploy!** 🚀
+
 

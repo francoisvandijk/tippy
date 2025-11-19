@@ -28,8 +28,10 @@
 - [ ] `SUPABASE_JWT_SECRET` - JWT signature verification secret
 
 #### Payment Processing (Yoco)
-- [ ] `YOCO_PUBLIC_KEY` - Yoco public API key (format: `pk_live_...` or `pk_test_...`)
-- [ ] `YOCO_SECRET_KEY` - Yoco secret API key (format: `sk_live_...` or `sk_test_...`)
+- [ ] `YOCO_LIVE_PUBLIC_KEY` - Yoco live public API key (format: `pk_live_...`) - Production only
+- [ ] `YOCO_LIVE_SECRET_KEY` - Yoco live secret API key (format: `sk_live_...`) - Production only
+- [ ] `YOCO_TEST_PUBLIC_KEY` - Yoco test public API key (format: `pk_test_...`) - Dev/Test environments
+- [ ] `YOCO_TEST_SECRET_KEY` - Yoco test secret API key (format: `sk_test_...`) - Dev/Test environments
 - [ ] `YOCO_WEBHOOK_SECRET` - Yoco webhook signature secret
 
 #### SMS (SendGrid - Primary)
@@ -310,4 +312,5 @@ curl -X POST https://api.tippy.co.za/admin/payouts/generate-weekly \
 
 **Status**: ✅ Ready for Production  
 **Last Updated**: 2025-11-17
+
 

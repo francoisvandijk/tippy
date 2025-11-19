@@ -11,14 +11,19 @@ global.fetch = vi.fn();
 describe('YocoClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.YOCO_PUBLIC_KEY = 'test_public_key';
-    process.env.YOCO_SECRET_KEY = 'test_secret_key';
+    // Set test mode (non-production)
+    process.env.NODE_ENV = 'test';
+    process.env.YOCO_TEST_PUBLIC_KEY = 'pk_test_test_public_key';
+    process.env.YOCO_TEST_SECRET_KEY = 'sk_test_test_secret_key';
     process.env.YOCO_API_URL = 'https://online.yoco.com/api/v1';
+    // Clear live keys to ensure test keys are used
+    delete process.env.YOCO_LIVE_PUBLIC_KEY;
+    delete process.env.YOCO_LIVE_SECRET_KEY;
   });
 
   it('should throw error if credentials not configured', () => {
-    delete process.env.YOCO_SECRET_KEY;
-    expect(() => new YocoClient()).toThrow('Yoco credentials not configured');
+    delete process.env.YOCO_TEST_SECRET_KEY;
+    expect(() => new YocoClient()).toThrow('Yoco test credentials not configured');
   });
 
   it('should create charge successfully', async () => {
@@ -51,7 +56,7 @@ describe('YocoClient', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          'Authorization': 'Bearer test_secret_key',
+          'Authorization': 'Bearer sk_test_test_secret_key',
         }),
       })
     );

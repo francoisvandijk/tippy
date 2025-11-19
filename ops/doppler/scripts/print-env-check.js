@@ -2,14 +2,24 @@
 // Used for runtime consumption testing
 // Ledger Reference: Tippy Decision Ledger v1.0 (Final), § 25
 
+const nodeEnv = process.env.NODE_ENV || 'development';
+const isProduction = nodeEnv === 'production';
+
+// Base required variables
 const requiredVars = [
     'TIPPY_DB_URL',
     'TIPPY_DB_PASSWORD',
-    'TIPPY_YOCO_API_KEY',
     'TIPPY_SENDGRID_API_KEY',
     'TIPPY_TWILIO_API_KEY',
     'SENTRY_DSN'
 ];
+
+// Add Yoco keys based on environment
+if (isProduction) {
+    requiredVars.push('YOCO_LIVE_PUBLIC_KEY', 'YOCO_LIVE_SECRET_KEY');
+} else {
+    requiredVars.push('YOCO_TEST_PUBLIC_KEY', 'YOCO_TEST_SECRET_KEY');
+}
 
 const missing = [];
 const present = [];
@@ -40,6 +50,7 @@ if (hasPlaceholders) {
 }
 
 // Success: all required vars present and not placeholders
-console.log(`✓ All ${requiredVars.length} required environment variables present and configured`);
+const yocoKeyType = isProduction ? 'live' : 'test';
+console.log(`✓ All ${requiredVars.length} required environment variables present and configured (Yoco: ${yocoKeyType} mode)`);
 process.exit(0);
 
