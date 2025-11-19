@@ -1,6 +1,6 @@
 // Example: Guards API routes with authentication
 // Ledger Reference: §7 (API Surface), §2 (Roles & Access), §8 (RLS / Security)
-// 
+//
 // NOTE: This is an example file showing how to use auth middleware.
 // When P1.2/P1.3 routes are merged, apply this pattern to the actual guards.ts file.
 
@@ -52,4 +52,3 @@ router.get(
 );
 
 export default router;
-

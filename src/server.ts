@@ -1,7 +1,7 @@
 // Main server entry point
 // Ledger Reference: §7 (API Surface), §15 (Environments & Deployment)
 
-import express from 'express';
+import express, { json, urlencoded } from 'express';
 
 import adminRouter from './api/routes/admin';
 import guardsRouter from './api/routes/guards';
@@ -14,12 +14,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(json({ limit: '10mb' }));
+app.use(urlencoded({ extended: true }));
 
 // Request logging (no PII per Ledger §13)
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  console.warn(`${new Date().toISOString()} ${req.method} ${req.path}`);
   next();
 });
 
@@ -57,10 +57,9 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 // Start server
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Tippy API server listening on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.warn(`Tippy API server listening on port ${PORT}`);
+    console.warn(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
 export default app;
-

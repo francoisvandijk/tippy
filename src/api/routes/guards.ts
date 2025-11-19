@@ -26,7 +26,7 @@ const router = Router();
  * Per Ledger §7: Guard endpoint
  * Per Ledger §24.4: Guard Registration via Referrer
  * Per Ledger §24.3: Welcome SMS automatically triggered
- * 
+ *
  * Auth: Requires 'admin' OR 'referrer' role (Ledger §24.4.3, §24.4.4)
  * - Referrers may register guards (per §24.4.3)
  * - Admins may register guards (full system access per §2.4)
@@ -75,10 +75,13 @@ router.post(
       if (req.auth!.role === 'referrer') {
         const ipAddress = req.ip || req.socket.remoteAddress || null;
         const _userAgent = req.get('user-agent') || null;
-        const deviceId = req.headers['x-device-id'] as string || null;
+        const deviceId = (req.headers['x-device-id'] as string) || null;
 
         // Check daily limits per referrer
-        const guardRegsPerReferrerPerDay = parseInt(process.env.GUARD_REGS_PER_REFERRER_PER_DAY || '15', 10);
+        const guardRegsPerReferrerPerDay = parseInt(
+          process.env.GUARD_REGS_PER_REFERRER_PER_DAY || '15',
+          10
+        );
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const { count: todayRegs } = await supabase
@@ -96,7 +99,10 @@ router.post(
 
         // Check device limit (if device_id provided)
         if (deviceId) {
-          const guardRegsPerDevicePerDay = parseInt(process.env.GUARD_REGS_PER_DEVICE_PER_DAY || '20', 10);
+          const guardRegsPerDevicePerDay = parseInt(
+            process.env.GUARD_REGS_PER_DEVICE_PER_DAY || '20',
+            10
+          );
           const { count: deviceRegs } = await supabase
             .from('guard_registration_events')
             .select('*', { count: 'exact', head: true })
@@ -113,7 +119,10 @@ router.post(
 
         // Check IP limit
         if (ipAddress) {
-          const guardRegsPerIpPerHour = parseInt(process.env.GUARD_REGS_PER_IP_PER_HOUR || '30', 10);
+          const guardRegsPerIpPerHour = parseInt(
+            process.env.GUARD_REGS_PER_IP_PER_HOUR || '30',
+            10
+          );
           const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
           const { count: ipRegs } = await supabase
             .from('guard_registration_events')
@@ -165,7 +174,7 @@ router.post(
       if (req.auth!.role === 'referrer') {
         // Referrer-initiated registration: derive referrer_id from auth
         registrationMethod = 'referrer';
-        
+
         // Look up referrer by user_id (req.auth.userId maps to users.id, which references referrers.id)
         const { data: referrer, error: referrerError } = await supabase
           .from('referrers')
@@ -188,10 +197,13 @@ router.post(
         }
 
         actualReferrerId = referrer.id;
-        
+
         // Ignore referrer_id from body if referrer role (security: body must not override identity)
         if (bodyReferrerId && bodyReferrerId !== actualReferrerId) {
-          console.warn("[guards] Referrer attempted to supply different referrer_id in body, ignoring", { userId: req.auth!.userId, bodyReferrerId, actualReferrerId });
+          console.warn(
+            '[guards] Referrer attempted to supply different referrer_id in body, ignoring',
+            { userId: req.auth!.userId, bodyReferrerId, actualReferrerId }
+          );
         }
       } else if (req.auth!.role === 'admin') {
         // Admin-initiated registration: may optionally supply referrer_id to attribute guard
@@ -267,7 +279,7 @@ router.post(
         });
 
         if (userError) {
-          console.error("[guards] Error creating user", userError?.message);
+          console.error('[guards] Error creating user', userError?.message);
           return res.status(500).json({
             error: 'PROCESSOR_ERROR',
             message: 'Failed to register guard',
@@ -294,7 +306,7 @@ router.post(
           .single();
 
         if (guardError || !newGuard) {
-          console.error("[guards] Error creating guard", guardError?.message);
+          console.error('[guards] Error creating guard', guardError?.message);
           return res.status(500).json({
             error: 'PROCESSOR_ERROR',
             message: 'Failed to register guard',
@@ -316,7 +328,7 @@ router.post(
           .eq('id', qrCodeId);
 
         if (qrAssignError) {
-          console.error("[guards] Error assigning QR code", qrAssignError?.message);
+          console.error('[guards] Error assigning QR code', qrAssignError?.message);
           // Non-blocking: continue even if QR assignment fails
         } else {
           // Update guard status to active if QR assigned
@@ -340,7 +352,7 @@ router.post(
           actor_role: req.auth!.role, // Extract from auth token (P1.6)
           ip_address: req.ip || req.socket.remoteAddress || null,
           user_agent: req.get('user-agent') || null,
-          device_id: req.headers['x-device-id'] as string || null,
+          device_id: (req.headers['x-device-id'] as string) || null,
           qr_code_id: qrCodeId || null,
           status: 'completed',
           metadata: {
@@ -353,7 +365,7 @@ router.post(
         .single();
 
       if (eventError) {
-        console.error("[guards] Error creating registration event", eventError?.message);
+        console.error('[guards] Error creating registration event', eventError?.message);
         // Non-blocking: continue even if event logging fails
       }
 
@@ -380,7 +392,7 @@ router.post(
             smsEventId = smsResult.smsEventId;
           } else {
             smsStatus = 'failed';
-            console.error("[guards] Welcome SMS failed", smsResult.error);
+            console.error('[guards] Welcome SMS failed', smsResult.error);
           }
 
           // Update registration event with SMS status
@@ -395,7 +407,10 @@ router.post(
           }
         } catch (smsError) {
           smsStatus = 'failed';
-          console.error("[guards] Welcome SMS error", smsError instanceof Error ? smsError.message : String(smsError));
+          console.error(
+            '[guards] Welcome SMS error',
+            smsError instanceof Error ? smsError.message : String(smsError)
+          );
           // Non-blocking: registration succeeds even if SMS fails
         }
       }
@@ -415,7 +430,7 @@ router.post(
           .single();
 
         if (referralError) {
-          console.error("[guards] Error creating referral", referralError?.message);
+          console.error('[guards] Error creating referral', referralError?.message);
           // Non-blocking: registration succeeds even if referral creation fails
         } else {
           referralId = referral.id;
@@ -445,7 +460,10 @@ router.post(
           },
         });
       } catch (auditError) {
-        console.error("[guards] Audit logging error", auditError instanceof Error ? auditError.message : String(auditError));
+        console.error(
+          '[guards] Audit logging error',
+          auditError instanceof Error ? auditError.message : String(auditError)
+        );
         // Non-blocking: registration succeeds even if audit logging fails
       }
 
@@ -458,7 +476,7 @@ router.post(
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error("[guards] Guard registration error", errorMessage);
+      console.error('[guards] Guard registration error', errorMessage);
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
         message: 'Failed to register guard',
@@ -471,26 +489,23 @@ router.post(
  * GET /guards/me
  * Get current guard's profile and earnings summary
  * Per Ledger §7: Guard endpoint (optional, for guard console)
- * 
+ *
  * Auth: Requires 'guard' role (Ledger §2.4, §8)
  * - Uses req.auth.userId to identify guard (not query param)
  * - RLS ensures guard can only see their own data
  */
-router.get(
-  '/me',
-  requireAuth,
-  requireRole('guard'),
-  async (req: Request, res: Response) => {
-    try {
-      // Extract guard_id from authentication token (P1.6)
-      // req.auth.userId maps to guards.id (guards.id references users.id)
-      const guardId = req.auth!.userId;
+router.get('/me', requireAuth, requireRole('guard'), async (req: Request, res: Response) => {
+  try {
+    // Extract guard_id from authentication token (P1.6)
+    // req.auth.userId maps to guards.id (guards.id references users.id)
+    const guardId = req.auth!.userId;
 
-      // Fetch guard profile
-      // RLS policy ensures guard can only see their own record
-      const { data: guard, error: guardError } = await supabase
-        .from('guards')
-        .select(`
+    // Fetch guard profile
+    // RLS policy ensures guard can only see their own record
+    const { data: guard, error: guardError } = await supabase
+      .from('guards')
+      .select(
+        `
           id,
           display_name,
           status,
@@ -500,81 +515,81 @@ router.get(
           language,
           created_at,
           activated_at
-        `)
-        .eq('id', guardId)
-        .single();
+        `
+      )
+      .eq('id', guardId)
+      .single();
 
-      if (guardError || !guard) {
-        return res.status(404).json({
-          error: 'PROCESSOR_ERROR',
-          message: 'Guard not found',
-        });
-      }
-
-      // Fetch active QR code
-      // RLS ensures guard can only see QR codes assigned to them
-      const { data: activeQr } = await supabase
-        .from('qr_codes')
-        .select('id, code, short_code, status, assigned_at')
-        .eq('assigned_guard_id', guardId)
-        .eq('status', 'active')
-        .single();
-
-      // Fetch recent payments (last 5 per Ledger §6.2)
-      // RLS ensures guard can only see their own payments
-      const { data: recentPayments } = await supabase
-        .from('payments')
-        .select('id, amount_gross, amount_net, status, created_at')
-        .eq('guard_id', guardId)
-        .eq('status', 'succeeded')
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      // Calculate current balance (net tips - payouts)
-      const currentBalance = guard.lifetime_net_tips - guard.lifetime_payouts;
-      const isEligibleForPayout = currentBalance >= 50000; // R500 in cents per Ledger §9
-
-      return res.status(200).json({
-        id: guard.id,
-        display_name: guard.display_name,
-        status: guard.status,
-        earnings: {
-          lifetime_gross: guard.lifetime_gross_tips,
-          lifetime_net: guard.lifetime_net_tips,
-          lifetime_payouts: guard.lifetime_payouts,
-          current_balance: currentBalance,
-          is_eligible_for_payout: isEligibleForPayout,
-        },
-        qr_code: activeQr
-          ? {
-              id: activeQr.id,
-              code: activeQr.code,
-              short_code: activeQr.short_code,
-              assigned_at: activeQr.assigned_at,
-            }
-          : null,
-        recent_payments: recentPayments || [],
-        language: guard.language,
-        created_at: guard.created_at,
-        activated_at: guard.activated_at,
-      });
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error("[guards] Guard profile fetch error", errorMessage);
-      return res.status(500).json({
+    if (guardError || !guard) {
+      return res.status(404).json({
         error: 'PROCESSOR_ERROR',
-        message: 'Failed to fetch guard profile',
+        message: 'Guard not found',
       });
     }
+
+    // Fetch active QR code
+    // RLS ensures guard can only see QR codes assigned to them
+    const { data: activeQr } = await supabase
+      .from('qr_codes')
+      .select('id, code, short_code, status, assigned_at')
+      .eq('assigned_guard_id', guardId)
+      .eq('status', 'active')
+      .single();
+
+    // Fetch recent payments (last 5 per Ledger §6.2)
+    // RLS ensures guard can only see their own payments
+    const { data: recentPayments } = await supabase
+      .from('payments')
+      .select('id, amount_gross, amount_net, status, created_at')
+      .eq('guard_id', guardId)
+      .eq('status', 'succeeded')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    // Calculate current balance (net tips - payouts)
+    const currentBalance = guard.lifetime_net_tips - guard.lifetime_payouts;
+    const isEligibleForPayout = currentBalance >= 50000; // R500 in cents per Ledger §9
+
+    return res.status(200).json({
+      id: guard.id,
+      display_name: guard.display_name,
+      status: guard.status,
+      earnings: {
+        lifetime_gross: guard.lifetime_gross_tips,
+        lifetime_net: guard.lifetime_net_tips,
+        lifetime_payouts: guard.lifetime_payouts,
+        current_balance: currentBalance,
+        is_eligible_for_payout: isEligibleForPayout,
+      },
+      qr_code: activeQr
+        ? {
+            id: activeQr.id,
+            code: activeQr.code,
+            short_code: activeQr.short_code,
+            assigned_at: activeQr.assigned_at,
+          }
+        : null,
+      recent_payments: recentPayments || [],
+      language: guard.language,
+      created_at: guard.created_at,
+      activated_at: guard.activated_at,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[guards] Guard profile fetch error', errorMessage);
+    return res.status(500).json({
+      error: 'PROCESSOR_ERROR',
+      message: 'Failed to fetch guard profile',
+    });
   }
-);
+});
 
 /**
  * GET /guards/me/earnings
  * Get current guard's earnings summary
  * Per Ledger §7: Guard endpoint
  * Per Ledger §9: Payouts visibility
- * 
+ *
  * Auth: Requires 'guard' role (Ledger §2.4, §8)
  */
 router.get(
@@ -620,14 +635,16 @@ router.get(
         lifetime_gross_tips_zar_cents: guard.lifetime_gross_tips,
         lifetime_net_tips_zar_cents: guard.lifetime_net_tips,
         lifetime_payouts_zar_cents: guard.lifetime_payouts,
-        last_payout: lastPayout ? {
-          amount_zar_cents: lastPayout.net_amount_zar_cents,
-          date: lastPayout.sent_at,
-        } : null,
+        last_payout: lastPayout
+          ? {
+              amount_zar_cents: lastPayout.net_amount_zar_cents,
+              date: lastPayout.sent_at,
+            }
+          : null,
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error("[guards] Earnings fetch error", errorMessage);
+      console.error('[guards] Earnings fetch error', errorMessage);
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
         message: 'Failed to fetch earnings',
@@ -640,7 +657,7 @@ router.get(
  * GET /guards/me/payouts
  * Get paginated list of past payouts for current guard
  * Per Ledger §7: Guard endpoint
- * 
+ *
  * Auth: Requires 'guard' role (Ledger §2.4, §8)
  */
 router.get(
@@ -650,14 +667,15 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const guardId = req.auth!.userId;
-      const page = parseInt(req.query.page as string || '1', 10);
-      const limit = parseInt(req.query.limit as string || '20', 10);
+      const page = parseInt((req.query.page as string) || '1', 10);
+      const limit = parseInt((req.query.limit as string) || '20', 10);
       const offset = (page - 1) * limit;
 
       // Fetch payouts
       const { data: payouts, error: payoutsError } = await supabase
         .from('payout_batch_items')
-        .select(`
+        .select(
+          `
           id,
           net_amount_zar_cents,
           sent_at,
@@ -668,7 +686,8 @@ router.get(
             period_end_date,
             processed_date
           )
-        `)
+        `
+        )
         .eq('guard_id', guardId)
         .eq('item_type', 'GUARD')
         .order('sent_at', { ascending: false })
@@ -699,7 +718,7 @@ router.get(
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error("[guards] Payouts fetch error", errorMessage);
+      console.error('[guards] Payouts fetch error', errorMessage);
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
         message: 'Failed to fetch payouts',
@@ -709,7 +728,3 @@ router.get(
 );
 
 export default router;
-
-
-
-

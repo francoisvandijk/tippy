@@ -77,7 +77,7 @@ describe('Migration Runner (P1.2)', () => {
   describe('Migration Version Extraction', () => {
     it('should extract version number from filename', () => {
       const getVersion = (filename: string) => filename.split('_')[0];
-      
+
       expect(getVersion('0004_payments.sql')).toBe('0004');
       expect(getVersion('0019_rls_policies.sql')).toBe('0019');
       expect(getVersion('0020_users.sql')).toBe('0020');
@@ -92,7 +92,7 @@ describe('Migration Runner (P1.2)', () => {
       const path = require('path');
       const migratePath = path.join(__dirname, '../src/migrate.ts');
       expect(fs.existsSync(migratePath)).toBe(true);
-      
+
       const content = fs.readFileSync(migratePath, 'utf-8');
       expect(content).toContain('runMigrations');
       expect(content).toContain('getMigrationFiles');
@@ -112,7 +112,7 @@ describe('Migration Runner (P1.2)', () => {
       const allMigrations = ['0004', '0019', '0020', '0021'];
       const applied = new Set(['0004', '0019']);
       const pending = allMigrations.filter((m) => !applied.has(m));
-      
+
       expect(pending).toEqual(['0020', '0021']);
     });
   });
@@ -122,7 +122,7 @@ describe('Migration Runner (P1.2)', () => {
       const files = readdirSync(migrationsDir);
       const sqlFiles = files.filter((f) => f.endsWith('.sql'));
       const nonSqlFiles = files.filter((f) => !f.endsWith('.sql'));
-      
+
       expect(sqlFiles.length).toBeGreaterThan(0);
       // All migration files should be .sql
       expect(nonSqlFiles.filter((f) => f.match(/^\d{4}_/)).length).toBe(0);
@@ -149,7 +149,7 @@ describe('Migration Runner (P1.2)', () => {
         /api[_-]?key\s*=\s*['"][^'"]+['"]/i,
         /secret\s*=\s*['"][^'"]+['"]/i,
       ];
-      
+
       // This test ensures the test itself doesn't have secrets
       const testContent = 'No secrets here';
       secretPatterns.forEach((pattern) => {
@@ -164,7 +164,7 @@ describe('Migration Runner (P1.2)', () => {
       const path = require('path');
       const migratePath = path.join(__dirname, '../src/migrate.ts');
       const content = fs.readFileSync(migratePath, 'utf-8');
-      
+
       // Should import getDbUrl from lib/db
       expect(content).toContain("from './lib/db'");
       expect(content).toContain('getDbUrl');

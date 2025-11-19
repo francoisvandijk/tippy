@@ -20,7 +20,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
     // Verify webhook signature if configured
     const signature = req.get('x-yoco-signature') || req.get('authorization') || '';
     const payload = JSON.stringify(req.body);
-    
+
     if (process.env.YOCO_WEBHOOK_SECRET) {
       const isValid = yocoClient.verifyWebhookSignature(payload, signature);
       if (!isValid) {
@@ -34,7 +34,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
     // Handle different event types
     if (event.type === 'charge.succeeded' || event.type === 'charge.failed') {
       const chargeData = event.data;
-      
+
       // Find payment by Yoco charge ID
       const { data: payments, error: findError } = await supabase
         .from('payments')
@@ -99,4 +99,3 @@ router.post('/webhook', async (req: Request, res: Response) => {
 });
 
 export default router;
-

@@ -1,7 +1,9 @@
 // Tests for guard registration endpoint with auth
 // Ledger Reference: §7 (API Surface), §24.3, §24.4, §2 (Roles & Access)
 
-import { vi , describe, it, expect, beforeEach} from 'vitest';
+import { sign } from 'jsonwebtoken';
+import request from 'supertest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -35,15 +37,10 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-
-import request from 'supertest';
-
 import * as auditModule from '../../src/lib/audit';
 import * as dbModule from '../../src/lib/db';
 import * as smsModule from '../../src/lib/sms';
 import app from '../../src/server';
-
-import jwt from 'jsonwebtoken';
 
 // Mock audit logging - MUST be before all imports
 vi.mock('../../src/lib/audit', () => {
@@ -56,38 +53,6 @@ vi.mock('../../src/lib/audit', () => {
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
-
-// Helper to create a proper mock chain for Supabase queries
-// Supports: .select().eq().single() and .select().eq().eq().single()
-const createSelectChain = (result: { data: any; error: any }) => {
-  const eqChain = {
-    single: vi.fn(() => Promise.resolve(result)),
-    eq: vi.fn(() => ({
-      single: vi.fn(() => Promise.resolve(result)),
-      order: vi.fn(() => ({
-        limit: vi.fn(() => Promise.resolve(result)),
-      })),
-    })),
-    order: vi.fn(() => ({
-      limit: vi.fn(() => Promise.resolve(result)),
-    })),
-    limit: vi.fn(() => Promise.resolve(result)),
-  };
-  
-  return {
-    select: vi.fn(() => ({
-      eq: vi.fn(() => eqChain),
-    })),
-  };
-};
-
-const createInsertChain = (result: { data: any; error: any }) => ({
-  insert: vi.fn(() => ({
-    select: vi.fn(() => ({
-      single: vi.fn(() => Promise.resolve(result)),
-    })),
-  })),
-});
 
 const createInsertNoSelect = () => ({
   insert: vi.fn(() => Promise.resolve({ data: null, error: null })),
@@ -107,7 +72,7 @@ process.env.SUPABASE_JWT_SECRET = TEST_JWT_SECRET;
  * Generate a test JWT token
  */
 function generateTestToken(userId: string, role: string = 'guard'): string {
-  return jwt.sign(
+  return sign(
     {
       sub: userId,
       role: role,
@@ -127,12 +92,10 @@ describe('POST /guards/register', () => {
 
   describe('Authentication', () => {
     it('should return 401 AUTHZ_DENIED without Authorization header', async () => {
-      const response = await request(app)
-        .post('/guards/register')
-        .send({
-          primary_phone: '+27123456789',
-          name: 'Test Guard',
-        });
+      const response = await request(app).post('/guards/register').send({
+        primary_phone: '+27123456789',
+        name: 'Test Guard',
+      });
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBe('AUTHZ_DENIED');
@@ -198,7 +161,7 @@ describe('POST /guards/register', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         // Anti-abuse checks (count queries return 0 - under limit)
         // Daily limit check always runs (call 1)
         // IP limit check runs if IP is available (call 2, usually available from req.ip)
@@ -219,7 +182,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'referrers' && callCount === 3) {
           // Referrer lookup - must return ACTIVE status
           return {
@@ -235,7 +198,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guards' && callCount === 4) {
           // Guard lookup (doesn't exist)
           return {
@@ -251,12 +214,12 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'users' && callCount === 5) {
           // User creation
           return createInsertNoSelect();
         }
-        
+
         if (table === 'guards' && callCount === 6) {
           // Guard creation
           return {
@@ -272,7 +235,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 7) {
           // Registration event
           return {
@@ -288,12 +251,12 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 8) {
           // Update registration event
           return createUpdateChain();
         }
-        
+
         if (table === 'referrals' && callCount === 9) {
           // Referral creation
           return {
@@ -309,14 +272,14 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'audit_log' && callCount === 8) {
           // Audit log insert (non-blocking)
           return {
             insert: vi.fn(() => Promise.resolve({ error: null })),
           };
         }
-        
+
         // Should not reach here
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
@@ -329,7 +292,6 @@ describe('POST /guards/register', () => {
           name: 'Test Guard',
           language: 'en',
         });
-
 
       expect(response.status).toBe(201);
       expect(response.body.message).toBe('Guard registered successfully');
@@ -348,7 +310,7 @@ describe('POST /guards/register', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         if (table === 'guards' && callCount === 1) {
           // Guard lookup (doesn't exist)
           return {
@@ -364,12 +326,12 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'users' && callCount === 2) {
           // User creation
           return createInsertNoSelect();
         }
-        
+
         if (table === 'guards' && callCount === 3) {
           // Guard creation
           return {
@@ -385,7 +347,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 4) {
           // Registration event
           return {
@@ -401,12 +363,12 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 5) {
           // Update registration event
           return createUpdateChain();
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -430,7 +392,7 @@ describe('POST /guards/register', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         // Anti-abuse checks (daily limit always runs, IP limit runs if IP available)
         if (table === 'guard_registration_events' && (callCount === 1 || callCount === 2)) {
           return {
@@ -448,7 +410,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'referrers' && callCount === 3) {
           return {
             select: vi.fn(() => ({
@@ -463,7 +425,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guards' && callCount === 4) {
           return {
             select: vi.fn(() => ({
@@ -478,11 +440,11 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'users' && callCount === 5) {
           return createInsertNoSelect();
         }
-        
+
         if (table === 'guards' && callCount === 6) {
           return {
             insert: vi.fn(() => ({
@@ -497,7 +459,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 7) {
           return {
             insert: vi.fn(() => ({
@@ -512,11 +474,11 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 8) {
           return createUpdateChain();
         }
-        
+
         if (table === 'referrals' && callCount === 9) {
           return {
             insert: vi.fn(() => ({
@@ -531,14 +493,14 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'audit_log' && callCount === 10) {
           // Audit log insert (non-blocking)
           return {
             insert: vi.fn(() => Promise.resolve({ error: null })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -628,7 +590,7 @@ describe('POST /guards/register', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         if (table === 'guards' && callCount === 1) {
           return {
             select: vi.fn(() => ({
@@ -643,11 +605,11 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'users' && callCount === 2) {
           return createInsertNoSelect();
         }
-        
+
         if (table === 'guards' && callCount === 3) {
           // Guard creation - capture insert data
           return {
@@ -666,7 +628,7 @@ describe('POST /guards/register', () => {
             }),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 4) {
           return {
             insert: vi.fn(() => ({
@@ -681,18 +643,18 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 5) {
           return createUpdateChain();
         }
-        
+
         if (table === 'audit_log' && callCount === 6) {
           // Audit log insert (non-blocking)
           return {
             insert: vi.fn(() => Promise.resolve({ error: null })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -717,14 +679,16 @@ describe('POST /guards/register', () => {
   describe('Error handling', () => {
     it('should handle SMS failure gracefully and still create guard', async () => {
       const adminToken = generateTestToken('admin-123', 'admin');
-      
+
       // Mock sendWelcomeSms to throw
-      (smsModule as any).__mockSendWelcomeSms.mockRejectedValueOnce(new Error('SMS provider unavailable'));
+      (smsModule as any).__mockSendWelcomeSms.mockRejectedValueOnce(
+        new Error('SMS provider unavailable')
+      );
 
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         if (table === 'guards' && callCount === 1) {
           return {
             select: vi.fn(() => ({
@@ -739,11 +703,11 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'users' && callCount === 2) {
           return createInsertNoSelect();
         }
-        
+
         if (table === 'guards' && callCount === 3) {
           return {
             insert: vi.fn(() => ({
@@ -758,7 +722,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 4) {
           return {
             insert: vi.fn(() => ({
@@ -773,17 +737,17 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 5) {
           return createUpdateChain();
         }
-        
+
         if (table === 'audit_log' && callCount === 6) {
           return {
             insert: vi.fn(() => Promise.resolve({ error: null })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -803,14 +767,16 @@ describe('POST /guards/register', () => {
 
     it('should handle audit logging failure gracefully and still create guard', async () => {
       const adminToken = generateTestToken('admin-123', 'admin');
-      
+
       // Mock logAuditEvent to throw
-      (auditModule as any).__mockLogAuditEvent.mockRejectedValueOnce(new Error('Audit log unavailable'));
+      (auditModule as any).__mockLogAuditEvent.mockRejectedValueOnce(
+        new Error('Audit log unavailable')
+      );
 
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         if (table === 'guards' && callCount === 1) {
           return {
             select: vi.fn(() => ({
@@ -825,11 +791,11 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'users' && callCount === 2) {
           return createInsertNoSelect();
         }
-        
+
         if (table === 'guards' && callCount === 3) {
           return {
             insert: vi.fn(() => ({
@@ -844,7 +810,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 4) {
           return {
             insert: vi.fn(() => ({
@@ -859,17 +825,17 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'guard_registration_events' && callCount === 5) {
           return createUpdateChain();
         }
-        
+
         if (table === 'audit_log' && callCount === 6) {
           return {
             insert: vi.fn(() => Promise.resolve({ error: null })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -896,7 +862,7 @@ describe('POST /guards/register', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         // Anti-abuse checks run first
         if (table === 'guard_registration_events' && (callCount === 1 || callCount === 2)) {
           return {
@@ -914,7 +880,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'referrers' && callCount === 3) {
           return {
             select: vi.fn(() => ({
@@ -929,7 +895,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -952,7 +918,7 @@ describe('POST /guards/register', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         // Anti-abuse checks run first
         if (table === 'guard_registration_events' && (callCount === 1 || callCount === 2)) {
           return {
@@ -970,7 +936,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         if (table === 'referrers' && callCount === 3) {
           return {
             select: vi.fn(() => ({
@@ -985,7 +951,7 @@ describe('POST /guards/register', () => {
             })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -1056,7 +1022,7 @@ describe('GET /guards/me', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         if (table === 'guards' && callCount === 1) {
           return {
             select: vi.fn(() => ({
@@ -1081,7 +1047,7 @@ describe('GET /guards/me', () => {
             })),
           };
         }
-        
+
         if (table === 'qr_codes' && callCount === 2) {
           return {
             select: vi.fn(() => ({
@@ -1098,7 +1064,7 @@ describe('GET /guards/me', () => {
             })),
           };
         }
-        
+
         if (table === 'payments' && callCount === 3) {
           return {
             select: vi.fn(() => ({
@@ -1117,7 +1083,7 @@ describe('GET /guards/me', () => {
             })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -1141,7 +1107,7 @@ describe('GET /guards/me', () => {
       let callCount = 0;
       mockSupabaseFrom.mockImplementation((table: string) => {
         callCount++;
-        
+
         if (table === 'guards' && callCount === 1) {
           return {
             select: vi.fn(() => ({
@@ -1170,7 +1136,7 @@ describe('GET /guards/me', () => {
             })),
           };
         }
-        
+
         if (table === 'qr_codes' && callCount === 2) {
           return {
             select: vi.fn(() => ({
@@ -1187,7 +1153,7 @@ describe('GET /guards/me', () => {
             })),
           };
         }
-        
+
         if (table === 'payments' && callCount === 3) {
           return {
             select: vi.fn(() => ({
@@ -1206,7 +1172,7 @@ describe('GET /guards/me', () => {
             })),
           };
         }
-        
+
         throw new Error(`Unexpected supabase.from('${table}') call #${callCount}`);
       });
 
@@ -1220,7 +1186,3 @@ describe('GET /guards/me', () => {
     });
   });
 });
-
-
-
-

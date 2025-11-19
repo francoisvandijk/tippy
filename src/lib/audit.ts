@@ -6,7 +6,14 @@ import { maskPhoneNumber } from './utils';
 
 export interface AuditLogEntry {
   event_type: string;
-  event_category: 'registration' | 'payment' | 'payout' | 'referral' | 'admin' | 'security' | 'other';
+  event_category:
+    | 'registration'
+    | 'payment'
+    | 'payout'
+    | 'referral'
+    | 'admin'
+    | 'security'
+    | 'other';
   actor_user_id?: string;
   actor_role?: string;
   actor_ip_address?: string;
@@ -78,8 +85,3 @@ export async function logAuditEvent(entry: AuditLogEntry): Promise<void> {
     console.error('Audit logging error:', error);
   }
 }
-
-
-
-
-

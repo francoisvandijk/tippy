@@ -54,4 +54,3 @@ describe('Payment Reference Generation', () => {
     expect(ref1).not.toBe(ref2);
   });
 });
-

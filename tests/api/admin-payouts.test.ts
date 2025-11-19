@@ -1,7 +1,9 @@
 // Tests for admin payout generation endpoint
 // Ledger Reference: §7 (API Surface), §9 (Payouts), §3 (Config)
 
-import { vi , describe, it, expect, beforeEach} from 'vitest';
+import { sign } from 'jsonwebtoken';
+import request from 'supertest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -34,13 +36,8 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-
-import request from 'supertest';
-
 import * as dbModule from '../../src/lib/db';
 import app from '../../src/server';
-
-import jwt from 'jsonwebtoken';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
@@ -55,7 +52,7 @@ process.env.PAYOUT_MIN_ELIGIBILITY_ZAR = '50000'; // R500
  * Generate a test JWT token
  */
 function generateTestToken(userId: string, role: string = 'admin'): string {
-  return jwt.sign(
+  return sign(
     {
       sub: userId,
       role: role,
@@ -231,7 +228,7 @@ describe('POST /admin/payouts/generate-weekly', () => {
         (call) => call[0] === 'payout_batch_items'
       );
       expect(updateCalls.length).toBeGreaterThan(0);
-      
+
       // Verify that the QR fee item update was called
       const payoutBatchItemsCalls = mockSupabaseFrom.mock.calls.filter(
         (call) => call[0] === 'payout_batch_items'
@@ -459,4 +456,3 @@ describe('POST /admin/payouts/generate-weekly', () => {
     });
   });
 });
-

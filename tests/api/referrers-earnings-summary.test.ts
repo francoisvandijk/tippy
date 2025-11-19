@@ -1,7 +1,9 @@
 // Tests for referrer earnings summary endpoint
 // Ledger Reference: §7 (API Surface), §10 (Referrals), §2 (Roles & Access)
 
-import { vi , describe, it, expect, beforeEach} from 'vitest';
+import { sign } from 'jsonwebtoken';
+import request from 'supertest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -26,12 +28,8 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-import request from 'supertest';
-
 import * as dbModule from '../../src/lib/db';
 import app from '../../src/server';
-
-import jwt from 'jsonwebtoken';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
@@ -62,7 +60,7 @@ process.env.SUPABASE_JWT_SECRET = TEST_JWT_SECRET;
  * Generate a test JWT token
  */
 function generateTestToken(userId: string, role: string = 'referrer'): string {
-  return jwt.sign(
+  return sign(
     {
       sub: userId,
       role: role,

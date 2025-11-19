@@ -10,7 +10,7 @@ declare namespace NodeJS {
     YOCO_LIVE_SECRET_KEY: string;
     YOCO_WEBHOOK_SECRET?: string;
     YOCO_API_URL?: string;
-    
+
     // Database
     SUPABASE_URL?: string;
     SUPABASE_ANON_KEY?: string;
@@ -19,13 +19,13 @@ declare namespace NodeJS {
     DB_URL?: string;
     TIPPY_DB_URL?: string;
     TIPPY_DB_PASSWORD?: string;
-    
+
     // Authentication
     SUPABASE_JWT_SECRET?: string;
     SUPABASE_JWT_ISSUER?: string;
     SUPABASE_JWT_AUDIENCE?: string;
     GITHUB_OAUTH_CLIENT_SECRET?: string;
-    
+
     // SMS Providers
     SMS_PROVIDER?: string;
     SENDGRID_API_KEY?: string;
@@ -35,7 +35,7 @@ declare namespace NodeJS {
     TWILIO_PHONE_NUMBER?: string;
     TIPPY_SENDGRID_API_KEY?: string;
     TIPPY_TWILIO_API_KEY?: string;
-    
+
     // Application Settings
     NODE_ENV?: 'development' | 'test' | 'production';
     PORT?: string;
@@ -54,9 +54,8 @@ declare namespace NodeJS {
     WELCOME_SMS_SENDER_ID?: string;
     WELCOME_SMS_TEMPLATE_ID?: string;
     WELCOME_SMS_RETRY_COUNT?: string;
-    
+
     // Monitoring
     SENTRY_DSN?: string;
   }
 }
-

@@ -51,7 +51,7 @@ export class YocoClient {
     // Determine if we're in test mode (dev/test environments use test keys)
     const nodeEnv = process.env.NODE_ENV || 'development';
     this.isTestMode = nodeEnv !== 'production';
-    
+
     // Select keys based on environment
     if (this.isTestMode) {
       this.publicKey = process.env.YOCO_TEST_PUBLIC_KEY || '';
@@ -60,9 +60,9 @@ export class YocoClient {
       this.publicKey = process.env.YOCO_LIVE_PUBLIC_KEY || '';
       this.secretKey = process.env.YOCO_LIVE_SECRET_KEY || '';
     }
-    
+
     this.baseUrl = process.env.YOCO_API_URL || 'https://online.yoco.com/api/v1';
-    
+
     if (!this.publicKey || !this.secretKey) {
       const keyType = this.isTestMode ? 'test' : 'live';
       throw new Error(
@@ -77,12 +77,12 @@ export class YocoClient {
    */
   async createCharge(request: YocoChargeRequest): Promise<YocoChargeResponse> {
     const url = `${this.baseUrl}/charges`;
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.secretKey}`,
+        Authorization: `Bearer ${this.secretKey}`,
       },
       body: JSON.stringify({
         amount: request.amount,
@@ -94,11 +94,13 @@ export class YocoClient {
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ message: 'Unknown error' })) as { message?: string };
+      const err = (await response.json().catch(() => ({ message: 'Unknown error' }))) as {
+        message?: string;
+      };
       throw new Error(`Yoco API error: ${err.message ?? 'Unknown error'}`);
     }
 
-    const responseData = await response.json() as YocoChargeResponse;
+    const responseData = (await response.json()) as YocoChargeResponse;
     return responseData;
   }
 
@@ -120,11 +122,7 @@ export class YocoClient {
       .createHmac('sha256', webhookSecret)
       .update(payload)
       .digest('hex');
-    
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
   }
 }
-

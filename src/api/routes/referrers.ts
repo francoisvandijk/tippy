@@ -19,7 +19,7 @@ const router = Router();
  * Per Ledger §7: Referral endpoint
  * Per Ledger §10: Referrals visibility
  * Per Ledger §24.4: Referrer can view own referred guards
- * 
+ *
  * Auth: Requires 'referrer' role (Ledger §2.4, §8)
  * - Uses req.auth.userId to identify referrer
  * - RLS ensures referrer can only see their own referrals
@@ -35,7 +35,8 @@ router.get(
       // Fetch referrals for this referrer
       const { data: referrals, error: referralsError } = await supabase
         .from('referrals')
-        .select(`
+        .select(
+          `
           id,
           status,
           created_at,
@@ -49,12 +50,13 @@ router.get(
             created_at,
             activated_at
           )
-        `)
+        `
+        )
         .eq('referrer_id', referrerId)
         .order('created_at', { ascending: false });
 
       if (referralsError) {
-        console.error("[referrers] Error fetching referrals", referralsError?.message);
+        console.error('[referrers] Error fetching referrals', referralsError?.message);
         return res.status(500).json({
           error: 'PROCESSOR_ERROR',
           message: 'Failed to fetch referred guards',
@@ -85,7 +87,7 @@ router.get(
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error("[referrers] Error fetching referred guards", errorMessage);
+      console.error('[referrers] Error fetching referred guards', errorMessage);
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
         message: 'Failed to fetch referred guards',
@@ -99,7 +101,7 @@ router.get(
  * Get earnings summary for current referrer
  * Per Ledger §7: Referral endpoint
  * Per Ledger §10: Referrals earnings visibility
- * 
+ *
  * Auth: Requires 'referrer' role (Ledger §2.4, §8)
  * - Uses req.auth.userId to identify referrer
  * - Returns total earnings, available balance, and breakdown
@@ -185,4 +187,3 @@ router.get(
 );
 
 export default router;
-

@@ -58,7 +58,7 @@ describe('YocoClient', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          'Authorization': 'Bearer sk_test_test_secret_key',
+          Authorization: 'Bearer sk_test_test_secret_key',
         }),
       })
     );
@@ -84,19 +84,18 @@ describe('YocoClient', () => {
   it('should verify webhook signature when secret configured', () => {
     process.env.YOCO_WEBHOOK_SECRET = 'test_secret';
     const client = new YocoClient();
-    
+
     // Use equal-length buffers to avoid buffer mismatch errors
     const fakeSig = Buffer.from('a'.repeat(64));
     const fakeExpected = Buffer.from('a'.repeat(64));
-    
+
     // Mock the verifyWebhookSignature to use timingSafeEqual with equal buffers
     vi.spyOn(client, 'verifyWebhookSignature').mockReturnValue(
       crypto.timingSafeEqual(fakeSig, fakeExpected)
     );
-    
+
     const result = client.verifyWebhookSignature('test_payload', 'test_signature');
     expect(typeof result).toBe('boolean');
     expect(result).toBe(true);
   });
 });
-
