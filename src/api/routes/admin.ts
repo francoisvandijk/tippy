@@ -6,13 +6,14 @@
 //   - Generates weekly payout batch per Ledger §9
 //   - Creates CSV export and emails to admin
 
+import { randomUUID } from 'crypto';
+
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { supabase } from '../../lib/db';
-import { requireAuth, requireRole } from '../../lib/auth';
+
 import { logAuditEvent } from '../../lib/audit';
-import { calculateFees } from '../../lib/fees';
-import { randomUUID } from 'crypto';
+import { requireAuth, requireRole } from '../../lib/auth';
+import { supabase } from '../../lib/db';
 
 const router = Router();
 

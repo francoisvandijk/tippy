@@ -1,8 +1,10 @@
 // Tests for Yoco integration
 // Ledger Reference: §6 (Key Workflows), §7 (API Surface)
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import crypto from 'crypto';
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import { YocoClient } from '../src/lib/yoco';
 
 // Mock fetch

@@ -1,7 +1,7 @@
 // Integration tests for payments API routes
 // Ledger Reference: §7 (API Surface)
 
-import { vi } from 'vitest';
+import { vi , describe, it, expect, beforeEach } from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 const createMockChain = () => ({
@@ -37,8 +37,9 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-import { describe, it, expect, beforeEach } from 'vitest';
+
 import request from 'supertest';
+
 import app from '../../src/server';
 
 describe('POST /payments/create', () => {

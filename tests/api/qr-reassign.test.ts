@@ -1,7 +1,7 @@
 // Tests for QR reassignment endpoint
 // Ledger Reference: §7 (API Surface), §6.4 (QR Assignment/Reassignment), §3 (Config), §9 (Payouts)
 
-import { vi } from 'vitest';
+import { vi , describe, it, expect, beforeEach} from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -35,12 +35,14 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import request from 'supertest';
-import app from '../../src/server';
-import jwt from 'jsonwebtoken';
-import * as dbModule from '../../src/lib/db';
+
 import * as auditModule from '../../src/lib/audit';
+import * as dbModule from '../../src/lib/db';
+import app from '../../src/server';
+
+import jwt from 'jsonwebtoken';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;

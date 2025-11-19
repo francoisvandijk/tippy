@@ -7,12 +7,14 @@
 //   - Applies R10 replacement fee per Ledger §3 (QR_REPLACEMENT_FEE_ZAR = 10.00)
 //   - Fee deducted from next payout per Ledger §9
 
+import { randomUUID } from 'crypto';
+
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { supabase } from '../../lib/db';
-import { requireAuth, requireRole } from '../../lib/auth';
+
 import { logAuditEvent } from '../../lib/audit';
-import { randomUUID } from 'crypto';
+import { requireAuth, requireRole } from '../../lib/auth';
+import { supabase } from '../../lib/db';
 
 const router = Router();
 
@@ -303,10 +305,10 @@ router.post(
             replacement_fee_zar_cents: qrReplacementFeeCents,
           },
         });
-      } catch (auditError) {
+      } catch (_auditError) {
         // NOTE: console.error is used here for application error logging only.
         // No PII is logged. A structured logger may replace this in a future phase per Ledger §13.6.
-        console.error("[qr] Audit logging error", auditError instanceof Error ? auditError.message : String(auditError));
+        console.error("[qr] Audit logging error", _auditError instanceof Error ? _auditError.message : String(_auditError));
         // Non-blocking: reassignment succeeds even if audit logging fails
       }
 
@@ -342,7 +344,7 @@ router.post(
           status: 'failure',
           error_message: errorMessage,
         });
-      } catch (auditError) {
+      } catch (_auditError) {
         // Silent fail for audit logging
       }
       

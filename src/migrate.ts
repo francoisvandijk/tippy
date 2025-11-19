@@ -4,7 +4,9 @@
 
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+
 import postgres from 'postgres';
+
 import { getDbUrl } from './lib/db';
 
 interface MigrationRecord {

@@ -1,7 +1,7 @@
 // Tests for admin payout generation endpoint
 // Ledger Reference: §7 (API Surface), §9 (Payouts), §3 (Config)
 
-import { vi } from 'vitest';
+import { vi , describe, it, expect, beforeEach} from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -34,11 +34,13 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import request from 'supertest';
-import app from '../../src/server';
-import jwt from 'jsonwebtoken';
+
 import * as dbModule from '../../src/lib/db';
+import app from '../../src/server';
+
+import jwt from 'jsonwebtoken';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
@@ -243,7 +245,7 @@ describe('POST /admin/payouts/generate-weekly', () => {
 
     it('should not double-deduct QR_REPLACEMENT fees on re-run', async () => {
       const adminToken = generateTestToken('admin-123', 'admin');
-      const guardId = 'guard-123';
+      const _guardId = 'guard-123';
       const existingBatchId = 'existing-batch-123';
 
       // Mock user lookup for auth

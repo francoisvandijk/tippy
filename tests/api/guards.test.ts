@@ -1,7 +1,7 @@
 // Tests for guard registration endpoint with auth
 // Ledger Reference: §7 (API Surface), §24.3, §24.4, §2 (Roles & Access)
 
-import { vi } from 'vitest';
+import { vi , describe, it, expect, beforeEach} from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -35,13 +35,15 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import request from 'supertest';
-import app from '../../src/server';
-import jwt from 'jsonwebtoken';
+
+import * as auditModule from '../../src/lib/audit';
 import * as dbModule from '../../src/lib/db';
 import * as smsModule from '../../src/lib/sms';
-import * as auditModule from '../../src/lib/audit';
+import app from '../../src/server';
+
+import jwt from 'jsonwebtoken';
 
 // Mock audit logging - MUST be before all imports
 vi.mock('../../src/lib/audit', () => {

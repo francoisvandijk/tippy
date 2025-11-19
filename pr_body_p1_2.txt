@@ -1,0 +1,76 @@
+## Summary
+
+This PR completes P1.2 "Incomplete Migration Runner" from the Full Stack Readiness Audit. The migration runner now processes all 19 migration files sequentially and tracks applied migrations in the `schema_migrations` table.
+
+## Changes
+
+### Files Changed
+- `src/migrate.ts` - Complete rewrite to handle all 19 migrations sequentially
+- `package.json` - Added `migrate:status` script
+- `tests/migrate.test.ts` - New test suite for migration runner
+- `README.md` - Updated migration documentation
+
+### Implementation Details
+
+**Migration Runner Features:**
+- Scans `infra/db/migrations/` directory
+- Sorts migration files numerically (0004, 0019, 0020, etc.)
+- Executes migrations sequentially
+- Tracks applied migrations in `schema_migrations` table
+- Supports `up`, `down`, and `status` commands
+- Idempotent - skips already-applied migrations
+- Ledger-compliant - no plaintext secrets, uses environment variables per §25
+
+**Migration Tracking:**
+- Creates `schema_migrations` table automatically
+- Records version, name, and applied_at timestamp
+- Prevents duplicate application of migrations
+
+## Verification Steps
+
+1. `npm run build` passes
+2. `npm test` passes (migration tests included)
+3. Migration runner structure verified
+4. No hardcoded secrets (Ledger §25 compliance)
+5. Uses environment variables for database connection
+
+## Ledger Compliance Mapping
+
+- **§4**: Data Model - Migration runner supports all 19 migration files
+- **§8**: RLS / Security - Migration runner respects database security
+- **§15**: Environments & Deployment - Idempotent migration runner per audit
+- **§19.5**: Doppler CI - No changes to CI workflow
+- **§25**: Secrets Management - No plaintext secrets, uses `getDbUrl()` from env vars
+
+## CI Expectations
+
+- Doppler CI workflow should run automatically
+- Build should pass (`npm run build`)
+- Tests should pass (`npm test`)
+- No secrets should be exposed in logs
+
+## Developer Commands
+
+```bash
+# Check migration status
+npm run migrate:status
+
+# Apply all pending migrations
+npm run migrate:up
+
+# Rollback (basic - requires manual SQL reversal)
+npm run migrate:down
+```
+
+## Testing
+
+Migration tests verify:
+- File discovery and sorting
+- Version extraction
+- Idempotency (skipping already-applied migrations)
+- Ledger compliance (no secrets, env var usage)
+
+---
+
+**Ledger Reference**: Tippy Decision Ledger v1.0 (Final), §15, P1.2
+

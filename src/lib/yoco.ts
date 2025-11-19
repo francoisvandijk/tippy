@@ -1,6 +1,8 @@
 // Yoco API integration
 // Ledger Reference: §5 (Fees & Calculations), §6 (Key Workflows)
 
+import crypto from 'crypto';
+
 export interface YocoChargeRequest {
   amount: number; // Amount in cents
   currency: string;
@@ -114,7 +116,6 @@ export class YocoClient {
     // Yoco webhook signature verification
     // Implementation depends on Yoco's specific signing method
     // This is a placeholder - adjust based on Yoco's actual webhook signing documentation
-    const crypto = require('crypto');
     const expectedSignature = crypto
       .createHmac('sha256', webhookSecret)
       .update(payload)

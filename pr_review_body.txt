@@ -1,0 +1,37 @@
+## AI Auto-Approval per §19.10
+
+**Governance Agent**: Tippy Phase 2 – P1.3 Implementation & PR Automation Agent
+
+### Preconditions Verified
+
+✅ **Repository & Target**: `francoisvandijk/tippy`, base `main`  
+✅ **Branch Naming**: `feature/p1-3-guard-registration-sms-referrals-payouts` (starts with `feature/`)  
+✅ **Changed Files**: All in `src/**` and `tests/**` only  
+✅ **No Locked Files**: No modifications to Ledger, ops/doppler, or governance docs  
+✅ **Build**: `npm run build` passes (exit code 0)  
+✅ **Tests**: `npm test` passes (45/45 tests)  
+✅ **Secrets & POPIA**: No hardcoded secrets, all use `process.env`; MSISDN hashing implemented  
+✅ **Migrations**: No migrations touched in this PR  
+✅ **CI**: All Doppler CI checks passing
+
+### Implementation Summary
+
+- Guard registration flow (admin + referrer) with anti-abuse limits
+- Welcome SMS per §24.3 (SendGrid integration)
+- Referrals flow with POPIA-compliant MSISDN handling
+- Payouts flow (calculation, batch export, guard views)
+
+### Ledger Compliance
+
+- §24.3 — Welcome SMS Policy (Locked) ✅
+- §24.4 — Referrer Activation & Guard Registration (Locked) ✅
+- §9 — Payouts (Weekly) ✅
+- §10 — Referrals (Locked) ✅
+- §13 — POPIA & Security ✅
+- §2 — Roles & Access ✅
+- §8 — RLS / Security ✅
+
+**Status**: APPROVED - All §19.10 conditions met
+
+
+

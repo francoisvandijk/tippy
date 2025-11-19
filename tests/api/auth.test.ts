@@ -1,7 +1,7 @@
 // Tests for authentication and authorization
 // Ledger Reference: §2 (Roles & Access), §8 (RLS / Security), §12 (Error Taxonomy)
 
-import { vi } from 'vitest';
+import { vi , describe, it, expect, beforeEach} from 'vitest';
 
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
@@ -26,11 +26,13 @@ vi.mock('../../src/lib/yoco', () => {
   };
 });
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import request from 'supertest';
-import app from '../../src/server';
-import jwt from 'jsonwebtoken';
+
 import * as dbModule from '../../src/lib/db';
+import app from '../../src/server';
+
+import jwt from 'jsonwebtoken';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;

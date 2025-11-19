@@ -7,14 +7,16 @@
 //   - If invoked by admin: admin may optionally supply referrer_id in body to attribute guard
 // - GET /guards/me: Requires 'guard' role, uses req.auth.userId (not query param)
 
+import { randomUUID } from 'crypto';
+
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { supabase } from '../../lib/db';
-import { hashPhoneNumber, maskPhoneNumber } from '../../lib/utils';
+
 import { logAuditEvent } from '../../lib/audit';
-import { sendWelcomeSms } from '../../lib/sms';
 import { requireAuth, requireRole } from '../../lib/auth';
-import { randomUUID } from 'crypto';
+import { supabase } from '../../lib/db';
+import { sendWelcomeSms } from '../../lib/sms';
+import { hashPhoneNumber, maskPhoneNumber } from '../../lib/utils';
 
 const router = Router();
 
@@ -72,7 +74,7 @@ router.post(
       // Anti-abuse checks per Ledger §24.4.5 (only for referrer-initiated registrations)
       if (req.auth!.role === 'referrer') {
         const ipAddress = req.ip || req.socket.remoteAddress || null;
-        const userAgent = req.get('user-agent') || null;
+        const _userAgent = req.get('user-agent') || null;
         const deviceId = req.headers['x-device-id'] as string || null;
 
         // Check daily limits per referrer

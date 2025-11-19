@@ -3,10 +3,11 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+
 import { supabase } from '../../lib/db';
-import { YocoClient } from '../../lib/yoco';
 import { calculateFees, generatePaymentReference } from '../../lib/fees';
-import type { CreatePaymentRequest, PaymentResponse } from '../../types/payment';
+import { YocoClient } from '../../lib/yoco';
+import type { PaymentResponse } from '../../types/payment';
 
 const router = Router();
 const yocoClient = new YocoClient();

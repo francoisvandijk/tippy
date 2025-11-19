@@ -2,6 +2,7 @@
 // Ledger Reference: §7 (API Surface), §6 (Key Workflows)
 
 import { Router, Request, Response } from 'express';
+
 import { supabase } from '../../lib/db';
 import { YocoClient } from '../../lib/yoco';
 import type { YocoWebhookEvent } from '../../lib/yoco';
@@ -83,7 +84,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
       }
 
       // Log webhook event (no PII)
-      console.log(`Payment ${payment.id} updated via webhook: ${chargeData.status}`);
+      console.warn(`Payment ${payment.id} updated via webhook: ${chargeData.status}`);
 
       return res.status(200).json({ message: 'Webhook processed' });
     }

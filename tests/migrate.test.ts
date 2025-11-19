@@ -1,9 +1,10 @@
 // Tests for migration runner
 // Ledger Reference: §15 (Environments & Deployment), P1.2
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readdirSync } from 'fs';
 import { join } from 'path';
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock postgres module
 vi.mock('postgres', () => {
@@ -134,12 +135,7 @@ describe('Migration Runner (P1.2)', () => {
       // This test verifies the concept - actual error handling is in migrate.ts
       const fs = require('fs');
       expect(() => {
-        try {
-          fs.readdirSync('/nonexistent/path/that/does/not/exist/12345');
-        } catch (error) {
-          // Expected to throw
-          throw error;
-        }
+        fs.readdirSync('/nonexistent/path/that/does/not/exist/12345');
       }).toThrow();
     });
   });

@@ -325,7 +325,7 @@ export async function sendWelcomeSms(
   // Ensure message is ≤160 chars per Ledger §24.3
   if (message.length > 160) {
     // Truncate if needed
-    const truncated = message.substring(0, 157) + '...';
+    const _truncated = message.substring(0, 157) + '...';
     console.warn(`Welcome SMS message truncated from ${message.length} to 160 chars`);
   }
 

@@ -7,8 +7,9 @@
 //   - No raw MSISDN in responses (POPIA compliance)
 
 import { Router, Request, Response } from 'express';
-import { supabase } from '../../lib/db';
+
 import { requireAuth, requireRole } from '../../lib/auth';
+import { supabase } from '../../lib/db';
 
 const router = Router();
 
@@ -61,6 +62,7 @@ router.get(
       }
 
       // Format response (no raw MSISDN per POPIA)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const guards = (referrals || []).map((referral: any) => ({
         referral_id: referral.id,
         referral_status: referral.status,

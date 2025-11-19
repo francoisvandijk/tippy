@@ -2,12 +2,13 @@
 // Ledger Reference: §7 (API Surface), §15 (Environments & Deployment)
 
 import express from 'express';
-import paymentsRouter from './api/routes/payments';
-import yocoWebhookRouter from './api/routes/yoco-webhook';
-import guardsRouter from './api/routes/guards';
-import referrersRouter from './api/routes/referrers';
+
 import adminRouter from './api/routes/admin';
+import guardsRouter from './api/routes/guards';
+import paymentsRouter from './api/routes/payments';
 import qrRouter from './api/routes/qr';
+import referrersRouter from './api/routes/referrers';
+import yocoWebhookRouter from './api/routes/yoco-webhook';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,7 +46,7 @@ app.use('/referrers', referrersRouter);
 app.use('/admin', adminRouter);
 
 // Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     error: 'PROCESSOR_ERROR',

@@ -3,6 +3,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+
 import { supabase } from './db';
 
 export type UserRole = 'admin' | 'referrer' | 'guard' | 'internal';
@@ -13,6 +14,7 @@ export interface AuthUser {
 }
 
 // Extend Express Request to include auth
+/* eslint-disable @typescript-eslint/no-namespace */
 declare global {
   namespace Express {
     interface Request {
@@ -20,6 +22,7 @@ declare global {
     }
   }
 }
+/* eslint-enable @typescript-eslint/no-namespace */
 
 /**
  * Verify Supabase JWT token
