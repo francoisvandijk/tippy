@@ -140,6 +140,7 @@ describe('POST /admin/referral/reversal', () => {
       guard_lifetime_gross_at_milestone: 50000,
     };
 
+    let ledgerCallCount = 0;
     mockSupabaseFrom.mockImplementation((table: string) => {
       if (table === 'users') {
         return {
@@ -159,33 +160,84 @@ describe('POST /admin/referral/reversal', () => {
       if (table === 'referral_milestones') {
         return {
           select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              lte: vi.fn(() => ({
-                order: vi.fn(() =>
-                  Promise.resolve({
-                    data: mockMilestoneData,
-                    error: null,
-                  })
-                ),
-              })),
-            })),
+            eq: vi.fn((column: string, value: any) => {
+              if (column === 'status') {
+                // First call: find candidates
+                return {
+                  lte: vi.fn(() => ({
+                    order: vi.fn(() =>
+                      Promise.resolve({
+                        data: mockMilestoneData,
+                        error: null,
+                      })
+                    ),
+                  })),
+                };
+              } else {
+                // Subsequent calls: get milestone detail
+                return {
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: mockMilestoneDetail,
+                      error: null,
+                    })
+                  ),
+                };
+              }
+            }),
           })),
         };
       }
 
       if (table === 'referral_earnings_ledger') {
-        return {
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
+        ledgerCallCount++;
+        // First call: find earned entry
+        if (ledgerCallCount === 1) {
+          return {
+            select: vi.fn(() => ({
               eq: vi.fn(() => ({
-                order: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  order: vi.fn(() => ({
+                    limit: vi.fn(() =>
+                      Promise.resolve({
+                        data: mockEarnedData,
+                        error: null,
+                      })
+                    ),
+                  })),
+                })),
+              })),
+            })),
+          };
+        }
+        // Second call: check for existing reversal
+        if (ledgerCallCount === 2) {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
                   limit: vi.fn(() =>
                     Promise.resolve({
-                      data: mockEarnedData,
+                      data: [], // No existing reversal
                       error: null,
                     })
                   ),
                 })),
+              })),
+            })),
+          };
+        }
+        // Third call: get current balance
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              order: vi.fn(() => ({
+                limit: vi.fn(() =>
+                  Promise.resolve({
+                    data: [{ balance_after_zar_cents: 2000 }],
+                    error: null,
+                  })
+                ),
               })),
             })),
           })),
