@@ -1,5 +1,15 @@
-# Section 19 Merge & Close-Out Script
-# Tippy Release Governance Agent
+<#
+    scripts/merge-and-closeout.ps1
+
+    Purpose:
+    - Merges a PR after § 19 Review approval.
+    - Creates tag v1.0-phase2.
+    - Deletes source branch.
+    - Posts governance announcements.
+    - Creates close-out document.
+
+    Ledger Reference: §19 (Governance & CI)
+#>
 
 Param(
   [string]$Owner = "francoisvandijk",
@@ -40,9 +50,9 @@ try {
     Write-Host "   PR is a draft - attempting to convert to ready..." -ForegroundColor Yellow
     $updateBody = @{ draft = $false } | ConvertTo-Json
     try {
-      $updated = Invoke-RestMethod -Method PATCH `
+      Invoke-RestMethod -Method PATCH `
         -Uri "https://api.github.com/repos/$Owner/$Repo/pulls/$Pr" `
-        -Headers $headers -Body $updateBody -ContentType "application/json" -ErrorAction Stop
+        -Headers $headers -Body $updateBody -ContentType "application/json" -ErrorAction Stop | Out-Null
       Write-Host "   API call successful - waiting for status propagation..." -ForegroundColor Green
       Start-Sleep -Seconds 5
       $prData = Invoke-RestMethod -Uri "https://api.github.com/repos/$Owner/$Repo/pulls/$Pr" -Headers $headers -ErrorAction Stop

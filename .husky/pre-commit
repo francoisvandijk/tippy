@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Check if any PowerShell scripts were changed
+changed_ps_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ps1$')
+
+if [ -n "$changed_ps_files" ]; then
+  echo "Running PSScriptAnalyzer on changed PowerShell scripts..."
+  npm run lint:ps
+  if [ $? -ne 0 ]; then
+    echo "PSScriptAnalyzer found errors. Commit aborted."
+    exit 1
+  fi
+fi
+

@@ -1,5 +1,13 @@
-# Create Draft PR and Post § 19 Checklist Comment (Interactive)
-# Tippy Release Governance Agent
+<#
+    scripts/create-pr-interactive.ps1
+
+    Purpose:
+    - Interactive version of create-pr-and-comment.ps1.
+    - Prompts for GitHub token if not set in environment.
+    - Creates draft PR and posts § 19 Checklist comment.
+
+    Ledger Reference: §19 (Governance & CI)
+#>
 
 $repo = "francoisvandijk/tippy"
 $head = "phase-2-payments-yoco"

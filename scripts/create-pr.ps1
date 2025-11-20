@@ -1,5 +1,12 @@
-# Create Draft PR for Phase 2 § 19 Review
-# Tippy Release Governance Agent
+<#
+    scripts/create-pr.ps1
+
+    Purpose:
+    - Creates a draft PR for Phase 2 § 19 Review.
+    - Requires GITHUB_TOKEN environment variable.
+
+    Ledger Reference: §19 (Governance & CI)
+#>
 
 $repo = "francoisvandijk/tippy"
 $head = "phase-2-payments-yoco"

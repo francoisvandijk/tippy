@@ -1,6 +1,13 @@
-# Yoco Credentials Verification Test
-# Tests Yoco API credentials and connectivity
-# Ledger Reference: §5 (Fees & Calculations), §6.1 (User Tipping)
+<#
+    scripts/test-yoco-credentials.ps1
+
+    Purpose:
+    - Tests Yoco API credentials and connectivity.
+    - Verifies key format and API connection.
+    - Never prints raw keys; only reports configuration status.
+
+    Ledger Reference: §5 (Fees & Calculations), §6.1 (User Tipping)
+#>
 
 param(
     [string]$Environment = "production"

@@ -1,6 +1,13 @@
-# Post-Deployment Verification Tests
-# Tests all P1.3 endpoints and functionality
-# Ledger Reference: §7 (API Surface), §24.3, §24.4, §9
+<#
+    scripts/test-post-deployment.ps1
+
+    Purpose:
+    - Tests all P1.3 endpoints and functionality.
+    - Verifies API endpoints are working correctly.
+    - Never prints raw secrets or tokens.
+
+    Ledger Reference: §7 (API Surface), §24.3, §24.4, §9
+#>
 
 param(
     [string]$ApiBaseUrl = "http://localhost:3000",
@@ -46,7 +53,7 @@ function Test-Endpoint {
         }
         
         $response = Invoke-RestMethod @params
-        $statusCode = $_.Exception.Response.StatusCode.value__
+        $statusCode = 200
         
         if ($statusCode -eq $ExpectedStatus -or $ExpectedStatus -eq "200") {
             Write-Host "  ✓ PASS (Status: $statusCode)" -ForegroundColor Green
@@ -59,15 +66,18 @@ function Test-Endpoint {
             return $false
         }
     } catch {
-        $statusCode = $_.Exception.Response.StatusCode.value__
+        $statusCode = 0
+        if ($_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
         if ($statusCode -eq $ExpectedStatus) {
             Write-Host "  ✓ PASS (Status: $statusCode)" -ForegroundColor Green
             $script:testResults += @{ Test = $Description; Status = "PASS"; StatusCode = $statusCode }
             return $true
         } else {
-            Write-Host "  ✗ FAIL: $_" -ForegroundColor Red
+            Write-Host "  ✗ FAIL: $($_.Exception.Message)" -ForegroundColor Red
             $script:testResults += @{ Test = $Description; Status = "FAIL"; Error = $_.Exception.Message }
-            $script:errors += "$Description - $_"
+            $script:errors += "$Description - $($_.Exception.Message)"
             return $false
         }
     }

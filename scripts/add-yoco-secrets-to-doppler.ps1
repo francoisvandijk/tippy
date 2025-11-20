@@ -1,9 +1,13 @@
-# Add Yoco Secrets to Doppler
-# Phase 2 - Yoco Secrets Integration
-# Ledger Reference: §25 (Environment, Credentials & Secrets Management)
-#
-# This script adds the Yoco test and live keys to Doppler environments.
-# Run this script after Phase 2 implementation to configure Yoco secrets.
+<#
+    scripts/add-yoco-secrets-to-doppler.ps1
+
+    Purpose:
+    - Adds Yoco test and live keys to Doppler environments.
+    - Configures secrets for development, staging, and production.
+    - Never prints raw secrets; only reports configuration status.
+
+    Ledger Reference: §25 (Environment, Credentials & Secrets Management)
+#>
 
 param(
     [Parameter(Mandatory=$true)]
