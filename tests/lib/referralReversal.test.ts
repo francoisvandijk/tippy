@@ -176,6 +176,8 @@ describe('processReferralReversals', () => {
   it('should process reversal when conditions are met', async () => {
     // Reset env to ensure enabled
     process.env.REFERRAL_REVERSAL_ENABLED = 'true';
+    process.env.REFERRAL_REVERSAL_CHECK_ABUSE_FLAGS = 'true';
+    process.env.REFERRAL_REVERSAL_CHECK_GUARD_ACTIVITY = 'true';
     vi.clearAllMocks();
     
     const mockMilestoneData = [
@@ -207,34 +209,39 @@ describe('processReferralReversals', () => {
       },
     ];
 
-    let milestoneCallCount = 0;
     let ledgerCallCount = 0;
     const mockFrom = vi.fn().mockImplementation((table: string) => {
       if (table === 'referral_milestones') {
-        milestoneCallCount++;
-        // First call: find candidates
-        if (milestoneCallCount === 1) {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                lte: vi.fn().mockReturnValue({
-                  order: vi.fn().mockResolvedValue({ data: mockMilestoneData, error: null }),
-                }),
-              }),
-            }),
-          };
-        }
-        // Subsequent calls: get milestone detail (for guard lifetime gross check)
-        // Note: This won't be called if abuse flags are found first
+        // Use column name to distinguish between first call (status) and subsequent calls (id)
         return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
-                data: { guard_lifetime_gross_at_milestone: 50000 },
-                error: null,
-              }),
+          select: vi.fn(() => ({
+            eq: vi.fn((column: string) => {
+              if (column === 'status') {
+                // First call: find candidates
+                return {
+                  lte: vi.fn(() => ({
+                    order: vi.fn(() =>
+                      Promise.resolve({
+                        data: mockMilestoneData,
+                        error: null,
+                      })
+                    ),
+                  })),
+                };
+              } else {
+                // Subsequent calls: get milestone detail (for guard lifetime gross check)
+                // Note: This won't be called if abuse flags are found first
+                return {
+                  single: vi.fn(() =>
+                    Promise.resolve({
+                      data: { guard_lifetime_gross_at_milestone: 50000 },
+                      error: null,
+                    })
+                  ),
+                };
+              }
             }),
-          }),
+          })),
         };
       }
       if (table === 'referral_earnings_ledger') {
@@ -242,69 +249,85 @@ describe('processReferralReversals', () => {
         // First call: find earned entry
         if (ledgerCallCount === 1) {
           return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  order: vi.fn().mockReturnValue({
-                    limit: vi.fn().mockResolvedValue({ data: mockEarnedData, error: null }),
-                  }),
-                }),
-              }),
-            }),
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  order: vi.fn(() => ({
+                    limit: vi.fn(() =>
+                      Promise.resolve({
+                        data: mockEarnedData,
+                        error: null,
+                      })
+                    ),
+                  })),
+                })),
+              })),
+            })),
           };
         }
         // Second call: check for existing reversal
         if (ledgerCallCount === 2) {
           return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  limit: vi.fn().mockResolvedValue({ data: [], error: null }),
-                }),
-              }),
-            }),
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  limit: vi.fn(() =>
+                    Promise.resolve({
+                      data: [], // No existing reversal
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
           };
         }
         // Third call: get current balance
         return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockReturnValue({
-                limit: vi.fn().mockResolvedValue({
-                  data: [{ balance_after_zar_cents: 2000 }],
-                  error: null,
-                }),
-              }),
-            }),
-          }),
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              order: vi.fn(() => ({
+                limit: vi.fn(() =>
+                  Promise.resolve({
+                    data: [{ balance_after_zar_cents: 2000 }],
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          })),
         };
       }
       if (table === 'abuse_flags') {
         return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              in: vi.fn().mockResolvedValue({ 
-                data: mockAbuseFlags, 
-                error: null 
-              }),
-            }),
-          }),
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              in: vi.fn(() =>
+                Promise.resolve({
+                  data: mockAbuseFlags,
+                  error: null,
+                })
+              ),
+            })),
+          })),
         };
       }
       if (table === 'guards') {
         return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
-                data: {
-                  id: 'guard-1',
-                  status: 'active',
-                  lifetime_gross_tips: 50000,
-                },
-                error: null,
-              }),
-            }),
-          }),
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              single: vi.fn(() =>
+                Promise.resolve({
+                  data: {
+                    id: 'guard-1',
+                    status: 'active',
+                    lifetime_gross_tips: 50000,
+                  },
+                  error: null,
+                })
+              ),
+            })),
+          })),
         };
       }
       return {
@@ -334,12 +357,6 @@ describe('processReferralReversals', () => {
     (supabase.rpc as any) = mockRpc;
 
     const result = await processReferralReversals();
-    // Note: This test may fail due to mock setup complexity, but the business logic
-    // is verified by the integration test in admin-referral-reversal.test.ts which passes.
-    // If this fails, check that all mocks are properly chained and RPC mock is called.
-    if (result.errors.length > 0) {
-      console.log('Errors:', result.errors);
-    }
     expect(result.reversalsProcessed).toBe(1);
     expect(result.totalReversalAmountZarCents).toBe(2000);
     expect(result.reversals.length).toBe(1);
