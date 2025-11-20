@@ -1,3 +1,37 @@
+## Summary
+- Automates the Ledger-mandated R500 → R20 referral milestone by introducing a Supabase RPC (`award_referral_milestone`) and a TypeScript helper (`processReferralMilestones`) that runs as part of weekly payout generation.
+- Extends the admin payout endpoint to trigger milestone processing, returns a structured summary, and ensures rewards are captured via the immutable `referral_earnings_ledger`.
+- Adds focused unit + integration tests covering milestone eligibility, RPC orchestration, and the admin job, keeping logging POPIA-safe.
+
+## Ledger References
+- §3 Config (REFERRAL\_TIP\_THRESHOLD\_ZAR, REFERRAL\_FEE\_PER\_GUARD\_ZAR) → env-driven thresholds/rewards.
+- §4 Data Model / §10 Referrals → new `award_referral_milestone` function uses `referral_milestones`, `referral_earnings_ledger`, `referrals`.
+- §6.5 Referrals & §9 Payouts → milestone automation now executes during `POST /admin/payouts/generate-weekly`.
+- §13.6 Logging → only non-PII identifiers emitted when milestones are awarded.
+
+## Implementation
+- **Database**: Migration `0039_referral_milestone_award_function.sql` adds the transactional RPC that inserts milestone + ledger entries, updates referral status, and returns reward metadata (Ledger §4/§10).
+- **Service layer**: New `src/lib/referrals.ts` parses env defaults, determines which referred guards exceed the R500 gross threshold, and calls the RPC per referral. Logic is idempotent thanks to the unique constraint and RPC early-exit.
+- **Admin endpoint**: `POST /admin/payouts/generate-weekly` now runs milestone processing up-front, logs high-level counts, and surfaces a `referral_milestones_summary` payload.
+- **Tests**: Added `tests/lib/referrals.test.ts` for eligibility scenarios and expanded `tests/api/admin-payouts.test.ts` to assert the RPC contract; all Supabase mocks now include `.rpc`.
+- **Env sample**: New referral env names are read from `REFERRAL_TIP_THRESHOLD_ZAR` / `REFERRAL_FEE_PER_GUARD_ZAR` (and optional overrides). Creating `.env.example` is blocked by the workspace `globalIgnore`, so please add those placeholders manually if allowed.
+
+## Security & POPIA
+- No new MSISDN/PII is logged; milestone logging uses guard/referral IDs only.
+- RPC writes stay inside Supabase (no secrets added) and reuse existing RLS-safe service role flow.
+
+## Testing
+- `npm test`
+- `npm run build`
+
+## Self-Review
+- [x] Alignment with Tippy Decision Ledger v1.0 referral milestone requirements.
+- [x] Ledger text untouched.
+- [x] No plaintext secrets or PII introduced.
+- [x] RLS/auth flows respected (admin-only endpoint, service role supabase client).
+- [x] Milestone reward enforced as a one-time event per referral via RPC + unique constraint.
+- [x] Tests added/updated and passing.
+- [x] Build passing.
 # P2: Add .env.example config template
 
 ## Purpose

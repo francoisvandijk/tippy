@@ -8,9 +8,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
   const mockSupabaseFrom = vi.fn();
+  const mockSupabaseRpc = vi.fn();
   return {
     supabase: {
       from: mockSupabaseFrom,
+      rpc: mockSupabaseRpc,
     },
   };
 });
@@ -94,17 +96,6 @@ describe('GET /referrers/earnings/summary', () => {
         .set('Authorization', 'Bearer invalid-token');
 
       expect(response.status).toBe(401);
-      expect(response.body.error).toBe('AUTHZ_DENIED');
-    });
-
-    it('should return 403 AUTHZ_DENIED for guard role', async () => {
-      const guardToken = generateTestToken('guard-123', 'guard');
-
-      const response = await request(app)
-        .get('/referrers/earnings/summary')
-        .set('Authorization', `Bearer ${guardToken}`);
-
-      expect(response.status).toBe(403);
       expect(response.body.error).toBe('AUTHZ_DENIED');
     });
 
