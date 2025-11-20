@@ -77,9 +77,9 @@ $requiredVars = @(
     "SUPABASE_DB_URL",
     "SUPABASE_JWT_SECRET",
     
-    # Yoco (production uses live keys)
-    "YOCO_LIVE_PUBLIC_KEY",
-    "YOCO_LIVE_SECRET_KEY",
+    # Yoco
+    "YOCO_PUBLIC_KEY",
+    "YOCO_SECRET_KEY",
     "YOCO_WEBHOOK_SECRET",
     
     # SendGrid (Primary SMS/Email)
@@ -173,5 +173,4 @@ if ($errors.Count -eq 0 -and $warnings.Count -eq 0) {
     
     exit 1
 }
-
 
