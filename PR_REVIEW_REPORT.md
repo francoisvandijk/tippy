@@ -1,420 +1,282 @@
-# PR Review Report: P2: Add .env.example config template
+# PR Review Report: P2 — Referral Milestone Automation (R500 → R20 reward)
 
-**Reviewer**: Tippy Governance Compliance Agent  
-**PR**: #35 (feature/env-example-template → main)  
-**Review Date**: 2025-01-27  
+**Reviewer**: Tippy Governance Review Agent  
+**PR Branch**: `feature/p2-referral-milestone-reward`  
+**Base Branch**: `main`  
+**Review Date**: 2025-11-20  
 **Ledger Reference**: Tippy Decision Ledger v1.0 (Final)
 
 ---
 
-## EXECUTIVE SUMMARY
+## Verdict
 
-**Verdict**: ✅ **CONDITIONAL PASS** (Minor fixes required)
+**PASS WITH NITS** ✅
 
-**Overall Assessment**: The PR is well-structured and largely compliant with the Ledger. However, there are **3 minor issues** that must be addressed before approval:
-
-1. Missing `XNEELO_API_KEY` (listed in Ledger §25.3)
-2. Missing `WELCOME_SMS_LANGUAGE_AUTO` (listed in Ledger §24.3)
-3. README.md suggests `.env.local` usage which could be clearer about Doppler-first approach
-
-**Auto-Approval Status**: ❌ **NOT ELIGIBLE** per §19.10 (requires manual review as specified by Francois)
+This PR successfully implements the Ledger-mandated referral milestone automation with proper idempotency, security, and compliance. Minor non-blocking suggestions are provided below.
 
 ---
 
-## 1. SECURITY & SECRETS COMPLIANCE (§25)
+## Summary
 
-### ✅ PASS: No Plaintext Secrets
-- All values use obvious placeholders (`YOUR_*_HERE`)
-- No realistic-looking example values
-- No actual API keys, tokens, or secrets
-
-### ✅ PASS: Placeholder Naming Conventions
-- Consistent `YOUR_*_HERE` pattern
-- Clear and obviously fake
-- No ambiguity about whether values are real
-
-### ✅ PASS: Doppler References
-- Header correctly references Ledger §25
-- Mentions Doppler as primary secrets manager
-- References GitHub Actions Secrets for CI/CD
-- Mentions `.env.local` for local dev (per §25.7)
-
-### ⚠️ MINOR ISSUE: Local Development Guidance
-**Issue**: README.md line 29 states: "For local development, copy `.env.example` to `.env.local` (gitignored) and fill in your values."
-
-**Concern**: While this is technically correct per §25.7, it could be clearer that Doppler is the preferred method even for local development. The current wording might encourage developers to bypass Doppler.
-
-**Recommendation**: Add clarification: "For local development, use Doppler CLI (`doppler run`) or copy `.env.example` to `.env.local` (gitignored) and fill in your values. Doppler is preferred per §25."
-
-**Severity**: Low (informational only, doesn't violate Ledger)
+- ✅ **Scope Verification**: PR only modifies expected files (migration, referral logic, admin endpoint, tests, pr_body.txt). No Ledger modifications, no CI/workflow changes, no secrets config changes.
+- ✅ **Ledger Compliance**: Implementation correctly follows §10.2 (R500 threshold, R20 reward), §9 (payout integration), §3 (env config), and §13.6 (POPIA-safe logging).
+- ✅ **Database & RPC**: Transactional RPC with proper idempotency via `ON CONFLICT (referral_id) DO NOTHING` and unique constraint. All amounts in cents. No RLS bypasses.
+- ✅ **Application Logic**: Env-driven config with correct defaults (R500/R20), proper ZAR→cents conversion, eligibility filtering prevents double-awards, uses RPC (no raw SQL), admin-only endpoint.
+- ✅ **Tests**: Comprehensive coverage including progression scenarios, edge cases, RPC call verification. All 83 tests pass. Build succeeds.
+- ✅ **Security & POPIA**: No MSISDN/PII logged, no secrets introduced, admin-only auth enforced, RLS respected.
+- ⚠️ **Minor**: One duplicate test case removed (non-blocking), `console.info` used (acceptable per §13.6 for structured logging).
 
 ---
 
-## 2. ARCHITECTURE & CONFIG COMPLIANCE
+## 1. Scope & Diff Verification
 
-### ✅ PASS: §3 Fees & Calculations
-- `PLATFORM_FEE_PERCENT` ✅ (default: 10.00)
-- `VAT_RATE_PERCENT` ✅ (default: 15.00)
-- `YOCO_FEE_PERCENT` ✅ (default: 0.00)
+### ✅ Confirmed Changes (Expected)
 
-### ✅ PASS: §7 QR Management
-- `QR_REPLACEMENT_FEE_ZAR` ✅ (default: 10.00)
+| File | Status | Notes |
+|------|--------|-------|
+| `infra/db/migrations/0039_referral_milestone_award_function.sql` | ✅ | New RPC function for milestone awards |
+| `src/lib/referrals.ts` | ✅ | New helper functions for milestone processing |
+| `src/api/routes/admin.ts` | ✅ | Integration into payout generation endpoint |
+| `tests/lib/referrals.test.ts` | ✅ | Unit tests for eligibility logic |
+| `tests/api/admin-payouts.test.ts` | ✅ | Integration tests for milestone RPC calls |
+| `tests/api/{auth,guards,payments,qr-reassign,referrers-earnings-summary}.test.ts` | ✅ | Supabase mock updates (added `.rpc` only) |
+| `pr_body.txt` | ✅ | PR description |
 
-### ✅ PASS: §13 Logging
-- `LOG_LEVEL` ✅
-- `SENTRY_DSN` ✅ (optional)
+### ✅ Verified No Changes To
 
-### ✅ PASS: §19 CI Workflow
-- No CI-specific variables needed in `.env.example` (CI uses `DOPPLER_TOKEN_CI` from GitHub Secrets)
+- ✅ `docs/TIPPY_DECISION_LEDGER.md` — **No modifications** (git diff confirms empty)
+- ✅ Doppler / secrets config files
+- ✅ CI / workflow files (`.github/workflows/`)
+- ✅ Other unrelated routes or libs
 
-### ✅ PASS: §24.3 Welcome SMS
-- `SEND_GUARD_WELCOME_SMS` ✅
-- `WELCOME_SMS_TEMPLATE_ID` ✅
-- `WELCOME_SMS_RETRY_COUNT` ✅
-- `SUPPORT_PHONE_NUMBER` ✅
-- `SMS_PROVIDER` ✅
-- `WELCOME_SMS_SENDER_ID` ✅ (optional fallback)
-
-### ⚠️ MISSING: `WELCOME_SMS_LANGUAGE_AUTO`
-**Issue**: Ledger §24.3 lists `WELCOME_SMS_LANGUAGE_AUTO=true` as a variable, but it's not in `.env.example`.
-
-**Status**: Variable is not used in codebase (grep found no references). However, since it's explicitly listed in the Ledger, it should be included for completeness.
-
-**Recommendation**: Add to Welcome SMS section:
-```
-# Welcome SMS language auto-detection (default: true)
-WELCOME_SMS_LANGUAGE_AUTO=true
-```
-
-**Severity**: Low (variable not currently used, but Ledger-compliant to include)
-
-### ✅ PASS: §24.4 Referrer Flow
-- `GUARD_REGS_PER_REFERRER_PER_DAY` ✅
-- `GUARD_REGS_PER_DEVICE_PER_DAY` ✅
-- `GUARD_REGS_PER_IP_PER_HOUR` ✅
-
-### ✅ PASS: §25 Secrets Management
-- All Ledger §25.3 variables present (except XNEELO - see below)
-- Proper grouping and documentation
-- Clear references to Doppler
-
-### ⚠️ MISSING: `XNEELO_API_KEY`
-**Issue**: Ledger §25.3 explicitly lists `XNEELO_API_KEY` under "Xneelo" section, but it's not in `.env.example`.
-
-**Status**: Variable is not used in codebase (grep found no references). However, since it's explicitly listed in Ledger §25.3, it should be included.
-
-**Recommendation**: Add section after CashSend:
-```
-# ============================================================================
-# Xneelo (if used)
-# ============================================================================
-XNEELO_API_KEY=YOUR_XNEELO_API_KEY_HERE
-```
-
-**Severity**: Low (variable not currently used, but Ledger-compliant to include)
-
-### ✅ PASS: §26 Branding
-- No environment variables related to branding (branding is code-level per §27)
+**Conclusion**: Scope is clean and limited to the feature implementation.
 
 ---
 
-## 3. CROSS-CHECK WITH CODEBASE
+## 2. Ledger Compliance
 
-### ✅ PASS: All `process.env.*` Usage Covered
+### ✅ Referral Milestone Requirements (§10.2)
 
-Verified against grep results (36 matches):
+| Requirement | Ledger Reference | Implementation | Status |
+|------------|-----------------|----------------|--------|
+| **Threshold** | R500 gross tips | `REFERRAL_TIP_THRESHOLD_ZAR` (default: 50000 cents) | ✅ Correct |
+| **Reward** | R20 per milestone | `REFERRAL_FEE_PER_GUARD_ZAR` (default: 2000 cents) | ✅ Correct |
+| **One-time per referral** | §10.2 | Unique constraint on `referral_milestones(referral_id)` + RPC `ON CONFLICT DO NOTHING` | ✅ Correct |
+| **Trigger point** | §9 (Payouts) | Executed in `POST /admin/payouts/generate-weekly` before payout generation | ✅ Correct |
+| **Units** | Cents convention | All amounts stored/processed in cents (50000 = R500, 2000 = R20) | ✅ Correct |
 
-**Domain & URLs**:
-- `TIPPY_DOMAIN` ✅ (not in code but in Ledger)
-- `TIPPY_API_URL` ✅ (not in code but in Ledger)
+### ✅ Config Alignment (§3)
 
-**Supabase**:
-- `SUPABASE_URL` ✅ (src/lib/db.ts:6)
-- `SUPABASE_ANON_KEY` ✅ (src/lib/db.ts:7)
-- `SUPABASE_SERVICE_ROLE_KEY` ✅ (via SUPABASE_SERVICE_KEY alias in src/lib/db.ts:7)
-- `SUPABASE_DB_URL` ✅ (src/lib/db.ts:19)
-- `SUPABASE_JWT_SECRET` ✅ (src/lib/auth.ts:47)
-- `SUPABASE_JWT_ISSUER` ✅ (src/lib/auth.ts:53)
-- `SUPABASE_JWT_AUDIENCE` ✅ (src/lib/auth.ts:54)
+- ✅ `REFERRAL_TIP_THRESHOLD_ZAR` defaults to 50000 cents (R500) — **matches Ledger §3**
+- ✅ `REFERRAL_FEE_PER_GUARD_ZAR` defaults to 2000 cents (R20) — **matches Ledger §3**
+- ✅ Code supports fallback env vars (`REFERRAL_MILESTONE_THRESHOLD_ZAR`, `REFERRAL_MILESTONE_REWARD_ZAR`) for flexibility
+- ✅ No hard-coded deviations from Ledger values
 
-**Yoco**:
-- `YOCO_TEST_PUBLIC_KEY` ✅ (src/lib/yoco.ts:55)
-- `YOCO_TEST_SECRET_KEY` ✅ (src/lib/yoco.ts:56)
-- `YOCO_LIVE_PUBLIC_KEY` ✅ (src/lib/yoco.ts:58)
-- `YOCO_LIVE_SECRET_KEY` ✅ (src/lib/yoco.ts:59)
-- `YOCO_WEBHOOK_SECRET` ✅ (src/lib/yoco.ts:108, src/api/routes/yoco-webhook.ts:23)
-- `YOCO_API_URL` ✅ (src/lib/yoco.ts:62)
-- `YOCO_FEE_PERCENT` ✅ (src/lib/fees.ts:19)
+### ✅ Ledger Text Integrity
 
-**SendGrid**:
-- `SENDGRID_API_KEY` ✅ (src/lib/sms.ts:175)
-- `SENDGRID_FROM_PHONE` ✅ (src/lib/sms.ts:193)
-- `SENDGRID_FROM_EMAIL` ✅ (not in code but in Ledger §25.3)
+- ✅ **No Ledger modifications** — git diff confirms `docs/TIPPY_DECISION_LEDGER.md` unchanged
+- ✅ Implementation compatible with existing Ledger sections (§4, §6.5, §9, §10, §13.6)
 
-**Twilio**:
-- `TWILIO_ACCOUNT_SID` ✅ (src/lib/sms.ts:233)
-- `TWILIO_AUTH_TOKEN` ✅ (src/lib/sms.ts:234)
-- `TWILIO_PHONE_NUMBER` ✅ (src/lib/sms.ts:235)
-
-**CashSend**:
-- `CASH_SEND_API_KEY` ✅ (not in code but in Ledger §25.3)
-- `CASH_SEND_API_SECRET` ✅ (not in code but in Ledger §25.3)
-
-**Operational**:
-- `ENVIRONMENT` ✅ (not in code but in Ledger §25.3)
-- `NODE_ENV` ✅ (src/server.ts:60, src/lib/yoco.ts:50)
-- `PORT` ✅ (src/server.ts:13)
-- `LOG_LEVEL` ✅ (not in code but in Ledger §25.3)
-- `SENTRY_DSN` ✅ (not in code but in Ledger §25.3)
-
-**Fees**:
-- `PLATFORM_FEE_PERCENT` ✅ (src/lib/fees.ts:20)
-- `VAT_RATE_PERCENT` ✅ (src/lib/fees.ts:21)
-
-**Payouts**:
-- `CASH_SEND_FEE_ZAR` ✅ (src/api/routes/admin.ts:112)
-- `PAYOUT_MIN_ELIGIBILITY_ZAR` ✅ (src/api/routes/admin.ts:113)
-- `PAYOUT_WEEKLY_SCHEDULE` ✅ (src/lib/sms.ts:308)
-
-**QR**:
-- `QR_REPLACEMENT_FEE_ZAR` ✅ (src/api/routes/qr.ts:146)
-
-**Guard Registration**:
-- `GUARD_REGS_PER_REFERRER_PER_DAY` ✅ (src/api/routes/guards.ts:79)
-- `GUARD_REGS_PER_DEVICE_PER_DAY` ✅ (src/api/routes/guards.ts:97)
-- `GUARD_REGS_PER_IP_PER_HOUR` ✅ (src/api/routes/guards.ts:114)
-
-**Welcome SMS**:
-- `SEND_GUARD_WELCOME_SMS` ✅ (src/lib/sms.ts:299)
-- `WELCOME_SMS_TEMPLATE_ID` ✅ (src/lib/sms.ts:335)
-- `WELCOME_SMS_RETRY_COUNT` ✅ (src/lib/sms.ts:57)
-- `SUPPORT_PHONE_NUMBER` ✅ (src/lib/sms.ts:309)
-- `SMS_PROVIDER` ✅ (src/lib/sms.ts:56)
-- `WELCOME_SMS_SENDER_ID` ✅ (src/lib/sms.ts:193, 235)
-
-**Legacy/Alternative Names**:
-- `DB_URL` ✅ (src/lib/db.ts:6, 19)
-- `SUPABASE_SERVICE_KEY` ✅ (src/lib/db.ts:7)
-- All legacy names properly documented ✅
-
-### ✅ PASS: No Unused Variables
-All variables in `.env.example` are either:
-- Used in codebase (`process.env.*`)
-- Listed in Ledger §25.3
-- Listed in other Ledger sections (e.g., §24.3, §24.4)
-- Legacy/alternative names for backward compatibility
+**Conclusion**: Full Ledger compliance. No deviations found.
 
 ---
 
-## 4. CROSS-CHECK WITH FULL-STACK READINESS AUDIT
+## 3. Database & RPC Review
 
-### ✅ PASS: All Audit Variables Present
+### ✅ Migration: `0039_referral_milestone_award_function.sql`
 
-Verified against Audit §3 (Environment Variables):
+#### Function Design
+- ✅ **Transactional**: Single RPC function handles all milestone operations atomically
+- ✅ **Idempotency**: `ON CONFLICT (referral_id) DO NOTHING` prevents duplicate awards
+- ✅ **Early exit**: Returns empty if milestone already exists (`v_milestone_id IS NULL`)
+- ✅ **Units**: All parameters and return values in cents (BIGINT)
 
-**Domain**: ✅
-- `TIPPY_DOMAIN` ✅
-- `TIPPY_API_URL` ✅
+#### Operations Performed
+1. ✅ Inserts milestone record into `referral_milestones` (with conflict handling)
+2. ✅ Calculates referrer balance from `referral_earnings_ledger`
+3. ✅ Inserts EARNED event into `referral_earnings_ledger` with balance
+4. ✅ Updates `referrals` table: sets `status = 'milestone_reached'`, `milestone_reached_at = NOW()`
+5. ✅ Returns milestone metadata (id, referrer_id, referral_id, guard_id, reward, balance)
 
-**Supabase**: ✅
-- `SUPABASE_URL` ✅
-- `SUPABASE_ANON_KEY` ✅
-- `SUPABASE_SERVICE_ROLE_KEY` ✅
-- `SUPABASE_DB_URL` ✅
-- `SUPABASE_JWT_SECRET` ✅
+#### Schema Compliance
+- ✅ Uses existing `referral_milestones` table (created in migration `0025`)
+- ✅ Unique constraint `idx_referral_milestones_unique_referral` ensures one milestone per referral
+- ✅ Foreign keys reference `referrals`, `referrers`, `guards` (proper relationships)
+- ✅ No plain MSISDN/PII stored or logged
 
-**Yoco**: ✅
-- `YOCO_TEST_PUBLIC_KEY` ✅
-- `YOCO_TEST_SECRET_KEY` ✅
-- `YOCO_LIVE_PUBLIC_KEY` ✅
-- `YOCO_LIVE_SECRET_KEY` ✅
-- `YOCO_WEBHOOK_SECRET` ✅
+#### RLS & Security
+- ✅ RPC runs under service role context (expected for admin operations)
+- ✅ No RLS bypasses — function respects existing table policies
+- ✅ No secrets or PII in function body
 
-**SendGrid**: ✅
-- `SENDGRID_API_KEY` ✅
-- `SENDGRID_FROM_PHONE` ✅
-- `SENDGRID_FROM_EMAIL` ✅
-
-**Twilio**: ✅
-- `TWILIO_ACCOUNT_SID` ✅
-- `TWILIO_AUTH_TOKEN` ✅
-- `TWILIO_PHONE_NUMBER` ✅
-
-**CashSend**: ✅
-- `CASH_SEND_API_KEY` ✅
-- `CASH_SEND_API_SECRET` ✅
-
-**Operational**: ✅
-- `ENVIRONMENT` ✅
-- `LOG_LEVEL` ✅
-- `SENTRY_DSN` ✅
-
-**Guard Registration**: ✅
-- `GUARD_REGS_PER_REFERRER_PER_DAY` ✅
-- `GUARD_REGS_PER_DEVICE_PER_DAY` ✅
-- `GUARD_REGS_PER_IP_PER_HOUR` ✅
-
-**Welcome SMS**: ✅
-- `SEND_GUARD_WELCOME_SMS` ✅
-- `WELCOME_SMS_TEMPLATE_ID` ✅
-- `WELCOME_SMS_RETRY_COUNT` ✅
-- `SUPPORT_PHONE_NUMBER` ✅
-- `SMS_PROVIDER` ✅
-
-**Payouts**: ✅
-- `CASH_SEND_FEE_ZAR` ✅
-- `PAYOUT_MIN_ELIGIBILITY_ZAR` ✅
-- `PAYOUT_WEEKLY_SCHEDULE` ✅
-
-**QR Reassignment**: ✅
-- `QR_REPLACEMENT_FEE_ZAR` ✅
+**Conclusion**: RPC design is sound, idempotent, and Ledger-compliant.
 
 ---
 
-## 5. README.md VALIDATION
+## 4. Application Logic Review
 
-### ✅ PASS: Ledger §25 Reference
-- Correctly references "Doppler per §25"
-- Mentions Ledger §25 for secrets management policy
+### ✅ `src/lib/referrals.ts`
 
-### ⚠️ MINOR ISSUE: Doppler-First Guidance
-**Issue**: Line 29 could be clearer about Doppler being the preferred method.
+#### Config Parsing
+- ✅ Reads `REFERRAL_TIP_THRESHOLD_ZAR` / `REFERRAL_FEE_PER_GUARD_ZAR` from env
+- ✅ Supports fallback env vars (`REFERRAL_MILESTONE_THRESHOLD_ZAR`, `REFERRAL_MILESTONE_REWARD_ZAR`)
+- ✅ Defaults: 50000 cents (R500), 2000 cents (R20) — **matches Ledger §3**
+- ✅ `parseZarToCents()` correctly handles integer and decimal strings
 
-**Current**: "For local development, copy `.env.example` to `.env.local` (gitignored) and fill in your values."
+#### Eligibility Filtering
+- ✅ `determineEligibleReferralMilestones()` correctly:
+  - Filters guards with `lifetime_gross_tips >= thresholdZarCents`
+  - Excludes referrals with `milestone_reached_at IS NOT NULL`
+  - Excludes referrals with existing milestone status
+- ✅ Prevents multiple rewards for same guard/referrer pair
 
-**Recommendation**: "For local development, use Doppler CLI (`doppler run`) or copy `.env.example` to `.env.local` (gitignored) and fill in your values. Doppler is preferred per §25."
+#### RPC Integration
+- ✅ Uses `supabase.rpc('award_referral_milestone', ...)` — **no raw SQL bypass**
+- ✅ Passes correct parameters (referral_id, referrer_id, guard_id, lifetime_gross, threshold, reward)
+- ✅ Handles RPC errors with descriptive messages
+- ✅ Aggregates results into summary structure
 
-**Severity**: Low (informational improvement)
+#### Logging
+- ✅ No MSISDN/PII logged — only internal IDs (referral_id, guard_id, referrer_id)
+- ✅ Error messages use safe identifiers only
 
-### ✅ PASS: No Bypassing Doppler
-- README correctly emphasizes Doppler as the primary method
-- `.env.local` is mentioned as a local dev option (per §25.7)
-- No suggestion to bypass Doppler for production
+### ✅ `src/api/routes/admin.ts`
 
----
+#### Integration Point
+- ✅ Milestone processing invoked **before** payout generation (line 54)
+- ✅ Aligned with Ledger §9 (weekly payouts) and §10.2 (milestone automation)
 
-## 6. FORMATTING & CONSISTENCY
+#### Auth & Authorization
+- ✅ `requireAuth` + `requireRole('admin')` enforced — **admin-only endpoint**
+- ✅ No role bypasses
 
-### ✅ PASS: Naming Convention
-- All variables use `SNAKE_CASE` ✅
-- Consistent uppercase ✅
-- Provider-prefixed where appropriate ✅
+#### Response Payload
+- ✅ `referral_milestones_summary` included in response (line 351)
+- ✅ Contains: `config`, `totalCandidates`, `milestonesAwarded`, `totalRewardAmountZarCents`, `rewards[]`
+- ✅ No PII exposed — only internal IDs and aggregates
 
-### ✅ PASS: Logical Grouping
-- Clear section headers with `===` dividers ✅
-- Grouped by domain (Domain, Supabase, Yoco, SendGrid, etc.) ✅
-- Related variables grouped together ✅
-- Legacy variables clearly separated ✅
+#### Logging
+- ✅ `console.info` used for milestone summary (line 56) — **acceptable per §13.6** (structured logging with non-PII data)
+- ✅ Error logging uses safe identifiers only
+- ✅ No raw phone numbers or secrets
 
-### ✅ PASS: Comments & Descriptions
-- Clear, descriptive comments ✅
-- Ledger section references where appropriate ✅
-- Default values documented ✅
-- No confidential information leaked ✅
-- Helpful context without exposing implementation details ✅
-
----
-
-## 7. REQUIRED CHANGES
-
-### Change 1: Add `XNEELO_API_KEY`
-**Location**: After CashSend section  
-**Action**: Add new section:
-```
-# ============================================================================
-# Xneelo (if used)
-# ============================================================================
-XNEELO_API_KEY=YOUR_XNEELO_API_KEY_HERE
-```
-
-**Rationale**: Explicitly listed in Ledger §25.3
-
-### Change 2: Add `WELCOME_SMS_LANGUAGE_AUTO`
-**Location**: Welcome SMS section  
-**Action**: Add after `WELCOME_SMS_RETRY_COUNT`:
-```
-# Welcome SMS language auto-detection (default: true)
-WELCOME_SMS_LANGUAGE_AUTO=true
-```
-
-**Rationale**: Explicitly listed in Ledger §24.3
-
-### Change 3: Clarify Doppler-First in README
-**Location**: README.md line 29  
-**Action**: Update text to:
-```
-**Note**: Real values are managed via Doppler per Ledger §25. For local development, use Doppler CLI (`doppler run`) or copy `.env.example` to `.env.local` (gitignored) and fill in your values. Doppler is preferred per §25.
-```
-
-**Rationale**: Better guidance on Doppler-first approach
+**Conclusion**: Application logic is correct, secure, and Ledger-compliant.
 
 ---
 
-## 8. VERDICT & RECOMMENDATIONS
+## 5. Tests & Mocks
 
-### Final Verdict: ✅ **CONDITIONAL PASS**
+### ✅ Test Coverage
 
-**Status**: PR is **APPROVED** with minor fixes required.
+#### `tests/lib/referrals.test.ts`
+- ✅ **Progression scenario**: < R500 → no reward, crossing R500 → one reward, subsequent > R500 → no second reward
+- ✅ **Edge case**: Jump from R0 to >= R500 (single payout)
+- ✅ Tests use correct threshold (50000 cents) and verify idempotency
 
-**Required Actions**:
-1. Add `XNEELO_API_KEY` to `.env.example`
-2. Add `WELCOME_SMS_LANGUAGE_AUTO` to `.env.example`
-3. Update README.md to clarify Doppler-first approach
+#### `tests/api/admin-payouts.test.ts`
+- ✅ **RPC call verification**: Tests confirm `supabase.rpc('award_referral_milestone', ...)` is called with expected arguments
+- ✅ **Integration test**: Verifies milestone processing runs during payout generation
+- ✅ **Response validation**: Confirms `referral_milestones_summary` in response payload
 
-**Timeline**: Changes can be made in a follow-up commit or as part of this PR before merge.
+#### Supabase Mock Updates
+- ✅ All test files updated to include `.rpc` mock:
+  - `tests/api/auth.test.ts`
+  - `tests/api/guards.test.ts`
+  - `tests/api/payments.test.ts`
+  - `tests/api/qr-reassign.test.ts`
+  - `tests/api/referrers-earnings-summary.test.ts`
+- ✅ Mocks do not leak secrets or PII
 
-### Auto-Approval Status: ❌ **NOT ELIGIBLE**
-
-Per §19.10 (AI Auto-Approval & Auto-Merge Exception):
-- PR modifies documentation files (`README.md`) ✅ Allowed
-- PR does NOT modify locked governance files ✅ Allowed
-- However, Francois explicitly requested manual review ✅ Required
-- Therefore: **Manual review required, no auto-approval**
-
-### Merge Instructions (After Fixes)
-
-If fixes are applied:
+### ✅ Test Execution
 
 ```bash
-# 1. Verify fixes are committed
-git log --oneline -1
-
-# 2. Verify CI passes (if applicable)
-# Check GitHub Actions for Doppler CI workflow
-
-# 3. Merge via GitHub UI or CLI
-gh pr merge 35 --squash --delete-branch
+Test Files  10 passed (10)
+Tests  83 passed (83)
+Duration  2.04s
 ```
 
-**Merge Method**: Squash merge (per §19.9.5)
+- ✅ All tests pass
+- ✅ Build succeeds (`npm run build` exits with code 0)
+- ✅ No test brittleness observed
+
+**Conclusion**: Comprehensive test coverage with all tests passing.
 
 ---
 
-## 9. COMPLIANCE SUMMARY
+## 6. Security, POPIA & RLS
 
-| Category | Status | Notes |
-|----------|--------|-------|
-| **Security (§25)** | ✅ PASS | No secrets, proper placeholders |
-| **Architecture (§3, §7, §13, §24, §25)** | ⚠️ MINOR | Missing 2 Ledger-listed variables |
-| **Codebase Alignment** | ✅ PASS | All `process.env.*` covered |
-| **Audit Alignment** | ✅ PASS | All audit variables present |
-| **README Compliance** | ⚠️ MINOR | Could clarify Doppler-first |
-| **Formatting** | ✅ PASS | Consistent, clear, well-organized |
-| **Ledger References** | ✅ PASS | Correct section citations |
+### ✅ Security & POPIA
 
-**Overall Compliance**: 95% (excellent, minor improvements needed)
+#### MSISDN / PII Handling
+- ✅ **No MSISDN logged** — grep confirms no phone number references in `src/lib/referrals.ts` or `src/api/routes/admin.ts`
+- ✅ **No PII in responses** — `referral_milestones_summary` contains only internal IDs (UUIDs) and aggregates
+- ✅ **No PII in logs** — milestone logging uses guard/referral IDs only
+
+#### Secrets
+- ✅ **No secrets added** — no API keys, tokens, or credentials in source or tests
+- ✅ **Env-driven config** — all sensitive values read from environment variables
+
+### ✅ RLS & Auth
+
+#### Admin Endpoint
+- ✅ `POST /admin/payouts/generate-weekly` requires `requireRole('admin')` — **admin-only access**
+- ✅ No role bypasses or privilege escalations
+
+#### RPC Usage
+- ✅ RPC runs under service role context (expected for admin operations)
+- ✅ Does not introduce public bypasses
+- ✅ Respects existing RLS policies on underlying tables
+
+#### Referrer Data Scoping
+- ✅ Referral milestone summary is admin-only (not exposed to referrers in this PR)
+- ✅ Future referrer-facing endpoints would need proper RLS scoping (out of scope for this PR)
+
+**Conclusion**: Security, POPIA, and RLS requirements met.
 
 ---
 
-## 10. CONCLUSION
+## Issues / Recommendations
 
-This PR successfully addresses the P2 gap identified in the Full-Stack Readiness Audit. The `.env.example` file is comprehensive, well-organized, and properly documented. The three minor issues identified are easily fixable and do not block approval.
+### 🔴 Blocking Issues
 
-**Recommendation**: **APPROVE** with request for minor fixes (can be done in follow-up or before merge).
+**None** — No blocking issues found.
 
 ---
 
-**Ledger = Law. This review verifies compliance with Tippy Decision Ledger v1.0 (Final).**
+### 🟡 Non-Blocking Suggestions
 
-*Review completed by Tippy Governance Compliance Agent*
+1. **Test Cleanup** (Minor)
+   - **Finding**: One duplicate test case was removed from `tests/api/referrers-earnings-summary.test.ts` (test for guard role returning 403, which was already covered elsewhere).
+   - **Impact**: None — test coverage remains comprehensive.
+   - **Recommendation**: No action required. This is a cleanup improvement.
 
+2. **Logging Format** (Minor)
+   - **Finding**: `console.info` is used for milestone summary logging (line 56 in `admin.ts`). Per §13.6, structured logging is preferred but `console.*` is acceptable for non-sensitive data.
+   - **Impact**: None — current logging is POPIA-compliant and does not expose PII.
+   - **Recommendation**: Consider migrating to structured logger in future phase (not required for this PR).
+
+3. **Env Var Naming** (Informational)
+   - **Finding**: Code supports both `REFERRAL_TIP_THRESHOLD_ZAR` (Ledger §3) and `REFERRAL_MILESTONE_THRESHOLD_ZAR` (fallback). This provides flexibility but may cause confusion.
+   - **Impact**: None — defaults are correct and Ledger-compliant.
+   - **Recommendation**: Document preferred env var names in code comments or README (optional).
+
+---
+
+## Governance Note
+
+### ✅ Compliance Confirmation
+
+- ✅ **Tippy Decision Ledger v1.0 compliance**: Implementation follows §3 (Config), §4 (Data Model), §6.5 (Referrals), §9 (Payouts), §10 (Referrals Domain), §13.6 (Logging Policy).
+- ✅ **No Ledger modifications**: `docs/TIPPY_DECISION_LEDGER.md` unchanged.
+- ✅ **No plaintext secrets / PII**: All sensitive data handled via env vars and masked/hashed where required.
+- ✅ **P2 Enhancement**: This is a P2 (Important, not blocking) enhancement ready for human approval and merge.
+
+### ✅ Ready for Merge
+
+This PR is **ready for merge** once any non-blocking suggestions (if desired) are addressed. All blocking requirements are satisfied.
+
+---
+
+**Review Completed**: 2025-11-20  
+**Reviewer**: Tippy Governance Review Agent  
+**Status**: ✅ **PASS WITH NITS**

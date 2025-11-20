@@ -219,6 +219,24 @@ describe('POST /admin/payouts/generate-weekly', () => {
           };
         }
 
+        // Referral reversal queries (called by processReferralReversals)
+        if (table === 'referral_milestones') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                lte: vi.fn(() => ({
+                  order: vi.fn(() =>
+                    Promise.resolve({
+                      data: [], // No reversal candidates
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
@@ -301,6 +319,24 @@ describe('POST /admin/payouts/generate-weekly', () => {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => eqChain),
+            })),
+          };
+        }
+
+        // Referral reversal queries (called by processReferralReversals)
+        if (table === 'referral_milestones') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                lte: vi.fn(() => ({
+                  order: vi.fn(() =>
+                    Promise.resolve({
+                      data: [], // No reversal candidates
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
             })),
           };
         }
@@ -469,6 +505,24 @@ describe('POST /admin/payouts/generate-weekly', () => {
           };
         }
 
+        // Referral reversal queries (called by processReferralReversals)
+        if (table === 'referral_milestones') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                lte: vi.fn(() => ({
+                  order: vi.fn(() =>
+                    Promise.resolve({
+                      data: [], // No reversal candidates
+                      error: null,
+                    })
+                  ),
+                })),
+              })),
+            })),
+          };
+        }
+
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
@@ -549,14 +603,6 @@ describe('POST /admin/payouts/generate-weekly', () => {
                   })
                 ),
               })),
-            })),
-          };
-        }
-
-        if (table === 'referral_milestones') {
-          return {
-            select: vi.fn(() => ({
-              in: vi.fn(() => Promise.resolve({ data: [], error: null })),
             })),
           };
         }
@@ -656,6 +702,31 @@ describe('POST /admin/payouts/generate-weekly', () => {
             update: vi.fn(() => ({
               eq: vi.fn(() => Promise.resolve({ error: null })),
             })),
+          };
+        }
+
+        // Referral milestone queries (handles both processReferralMilestones and processReferralReversals)
+        if (table === 'referral_milestones') {
+          return {
+            select: vi.fn(() => {
+              // Return a chainable mock that handles both .in() and .eq().lte() patterns
+              const inMock = vi.fn(() => Promise.resolve({ data: [], error: null }));
+              const eqMock = vi.fn(() => ({
+                lte: vi.fn(() => ({
+                  order: vi.fn(() =>
+                    Promise.resolve({
+                      data: [], // No reversal candidates
+                      error: null,
+                    })
+                  ),
+                })),
+                in: inMock, // Also support .in() for processReferralMilestones
+              }));
+              return {
+                eq: eqMock,
+                in: inMock,
+              };
+            }),
           };
         }
 

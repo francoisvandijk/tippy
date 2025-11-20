@@ -15,6 +15,7 @@ import { logAuditEvent } from '../../lib/audit';
 import { requireAuth, requireRole } from '../../lib/auth';
 import { supabase } from '../../lib/db';
 import { processReferralMilestones } from '../../lib/referrals';
+import { processReferralReversals } from '../../lib/referralReversal';
 
 const router = Router();
 
@@ -56,6 +57,15 @@ router.post(
         console.info('[referrals] Milestone rewards issued', {
           milestonesAwarded: referralMilestoneSummary.milestonesAwarded,
           totalRewardAmountZarCents: referralMilestoneSummary.totalRewardAmountZarCents,
+        });
+      }
+
+      // Process T+30 referral reversals per Ledger §10.2
+      const referralReversalSummary = await processReferralReversals();
+      if (referralReversalSummary.reversalsProcessed > 0) {
+        console.info('[referrals] T+30 reversals processed', {
+          reversalsProcessed: referralReversalSummary.reversalsProcessed,
+          totalReversalAmountZarCents: referralReversalSummary.totalReversalAmountZarCents,
         });
       }
 
@@ -349,6 +359,7 @@ router.post(
         total_cashsend_fees_zar_cents: totalCashSendFees,
         csv_preview: csvContent.substring(0, 500), // First 500 chars as preview
         referral_milestones_summary: referralMilestoneSummary,
+        referral_reversals_summary: referralReversalSummary,
         status: 'generated',
       });
     } catch (error: unknown) {
@@ -361,5 +372,683 @@ router.post(
     }
   }
 );
+
+/**
+ * POST /admin/referral/reversal
+ * Process referral reversals (manual or T+30 bulk)
+ * Per Ledger §7: Admin endpoint
+ * Per Ledger §10.2: T+30 reversal logic
+ * Per Ledger §10.3: Eligibility & Payout
+ *
+ * Auth: Requires 'admin' role (Ledger §2.4, §8)
+ *
+ * Supports two modes:
+ * 1. Manual reversal: Provide referral_id/milestone_id and reason
+ * 2. Bulk T+30 processing: No parameters (processes all eligible reversals)
+ */
+const referralReversalSchema = z
+  .object({
+    referral_id: z.string().optional(),
+    milestone_id: z.string().optional(),
+    reason: z.string().min(1).optional(),
+  })
+  .refine((data) => !(data.referral_id || data.milestone_id) || data.reason, {
+    message: 'reason is required for manual reversal',
+    path: ['reason'],
+  });
+
+router.post(
+  '/referral/reversal',
+  requireAuth,
+  requireRole('admin'),
+  async (req: Request, res: Response) => {
+    try {
+      // Validate request body
+      const validationResult = referralReversalSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        // Extract refine error messages and include in main message
+        const refineErrors = validationResult.error.errors.filter((e) => e.code === 'custom');
+        const message =
+          refineErrors.length > 0
+            ? refineErrors[0].message || 'Invalid request data'
+            : 'Invalid request data';
+        return res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: message,
+          details: validationResult.error.errors,
+        });
+      }
+
+      const { referral_id, milestone_id, reason } = validationResult.data;
+
+      // Manual reversal mode: specific referral/milestone
+      if (referral_id || milestone_id) {
+        // reason validation is handled by schema refine, but check again for safety
+        if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+          return res.status(400).json({
+            error: 'VALIDATION_ERROR',
+            message: 'reason is required for manual reversal',
+          });
+        }
+
+        // Find the milestone to reverse
+        let milestoneQuery = supabase
+          .from('referral_milestones')
+          .select('id, referrer_id, referral_id, guard_id, reward_amount_zar_cents, status, rewarded_at');
+
+        if (milestone_id) {
+          milestoneQuery = milestoneQuery.eq('id', milestone_id);
+        } else if (referral_id) {
+          milestoneQuery = milestoneQuery.eq('referral_id', referral_id);
+        }
+
+        const { data: milestone, error: milestoneError } = await milestoneQuery.single();
+
+        if (milestoneError || !milestone) {
+          return res.status(404).json({
+            error: 'PROCESSOR_ERROR',
+            message: 'Referral milestone not found',
+          });
+        }
+
+        // Validate milestone is eligible for reversal
+        if (milestone.status !== 'rewarded') {
+          return res.status(400).json({
+            error: 'BUSINESS_RULE_VIOLATION',
+            message: `Milestone status is ${milestone.status}, only 'rewarded' milestones can be reversed`,
+          });
+        }
+
+        // Check if reversal already exists (idempotency)
+        const { data: earnedEntries } = await supabase
+          .from('referral_earnings_ledger')
+          .select('id')
+          .eq('milestone_id', milestone.id)
+          .eq('event_type', 'EARNED')
+          .limit(1);
+
+        if (!earnedEntries || earnedEntries.length === 0) {
+          return res.status(404).json({
+            error: 'PROCESSOR_ERROR',
+            message: 'No EARNED ledger entry found for this milestone',
+          });
+        }
+
+        const originalEarnedId = earnedEntries[0].id;
+
+        const { data: existingReversal } = await supabase
+          .from('referral_earnings_ledger')
+          .select('id')
+          .eq('reversal_reference_id', originalEarnedId)
+          .eq('event_type', 'REVERSAL')
+          .limit(1);
+
+        if (existingReversal && existingReversal.length > 0) {
+          return res.status(409).json({
+            error: 'VALIDATION_ERROR',
+            message: 'Reversal already exists for this milestone',
+            reversal_id: existingReversal[0].id,
+          });
+        }
+
+        // Create reversal using RPC function
+        const { data: reversalData, error: reversalError } = await supabase.rpc(
+          'reverse_referral_milestone',
+          {
+            p_milestone_id: milestone.id,
+            p_earned_ledger_id: originalEarnedId,
+            p_reversal_reason: reason,
+          }
+        );
+
+        if (reversalError || !reversalData || !Array.isArray(reversalData) || reversalData.length === 0) {
+          console.error('[admin] Error creating reversal', reversalError?.message);
+          return res.status(500).json({
+            error: 'PROCESSOR_ERROR',
+            message: 'Failed to create reversal',
+          });
+        }
+
+        const reversal = reversalData[0] as {
+          reversal_id: string;
+          balance_after_zar_cents: number;
+        };
+
+        // Log audit event
+        try {
+          await logAuditEvent({
+            event_type: 'REFERRAL_REVERSAL_PROCESSED',
+            event_category: 'referral',
+            actor_user_id: req.auth!.userId,
+            actor_role: req.auth!.role,
+            entity_type: 'referral_reversal',
+            entity_id: reversal.reversal_id,
+            action: 'manual_reversal',
+            description: `Manual referral reversal processed. Milestone: ${milestone.id}, Reason: ${reason}`,
+            status: 'success',
+            metadata: {
+              milestone_id: milestone.id,
+              referral_id: milestone.referral_id,
+              referrer_id: milestone.referrer_id,
+              guard_id: milestone.guard_id,
+              reversal_amount_zar_cents: milestone.reward_amount_zar_cents,
+              balance_after_zar_cents: reversal.balance_after_zar_cents,
+              reason: reason,
+            },
+          });
+        } catch (auditError) {
+          console.error(
+            '[admin] Audit logging error',
+            auditError instanceof Error ? auditError.message : String(auditError)
+          );
+          // Non-blocking
+        }
+
+        return res.status(200).json({
+          success: true,
+          reversal_id: reversal.reversal_id,
+          milestone_id: milestone.id,
+          referral_id: milestone.referral_id,
+          referrer_id: milestone.referrer_id,
+          reversal_amount_zar_cents: milestone.reward_amount_zar_cents,
+          balance_after_zar_cents: reversal.balance_after_zar_cents,
+          reason: reason,
+        });
+      }
+
+      // Bulk T+30 processing mode: process all eligible reversals
+      const reversalSummary = await processReferralReversals();
+
+      // Log audit event
+      try {
+        await logAuditEvent({
+          event_type: 'REFERRAL_REVERSAL_PROCESSED',
+          event_category: 'referral',
+          actor_user_id: req.auth!.userId,
+          actor_role: req.auth!.role,
+          entity_type: 'referral_reversal',
+          action: 'process_t30_reversals',
+          description: `T+30 referral reversals processed: ${reversalSummary.reversalsProcessed} reversals, ${reversalSummary.totalReversalAmountZarCents} cents reversed`,
+          status: reversalSummary.errors.length > 0 ? 'partial' : 'success',
+          metadata: {
+            totalCandidates: reversalSummary.totalCandidates,
+            reversalsProcessed: reversalSummary.reversalsProcessed,
+            totalReversalAmountZarCents: reversalSummary.totalReversalAmountZarCents,
+            errorCount: reversalSummary.errors.length,
+          },
+        });
+      } catch (auditError) {
+        console.error(
+          '[admin] Audit logging error',
+          auditError instanceof Error ? auditError.message : String(auditError)
+        );
+        // Non-blocking
+      }
+
+      return res.status(200).json({
+        success: true,
+        summary: reversalSummary,
+      });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[admin] Referral reversal processing error', errorMessage);
+      return res.status(500).json({
+        error: 'PROCESSOR_ERROR',
+        message: 'Failed to process referral reversals',
+      });
+    }
+  }
+);
+
+/**
+ * POST /admin/qr/assign
+ * Admin-side QR assignment to guard
+ * Per Ledger §7: Admin endpoint
+ * Per Ledger §6.4: QR Assignment/Reassignment
+ * Per Ledger §24.4: Referrer Activation & Guard Registration
+ *
+ * Auth: Requires 'admin' role (Ledger §2.4, §8)
+ *
+ * Allows admin to manually assign a QR code to a guard.
+ * Validates QR state and guard eligibility.
+ * Respects QR_REPLACEMENT_FEE_ZAR if reassignment is required.
+ */
+const qrAssignSchema = z
+  .object({
+    qr_id: z.string().optional(),
+    qr_code: z.string().min(1).optional(),
+    short_code: z.string().min(1).optional(),
+    guard_id: z.string(),
+    force_reassign: z.boolean().optional().default(false), // Force reassignment even if QR is assigned
+  })
+  .refine((data) => data.qr_id || data.qr_code || data.short_code, {
+    message: 'Either qr_id, qr_code, or short_code must be provided',
+    path: ['qr_id'],
+  });
+
+router.post('/qr/assign', requireAuth, requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    // Validate request body
+    const validationResult = qrAssignSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      // Extract refine error messages and include in main message
+      const refineErrors = validationResult.error.errors.filter((e) => e.code === 'custom');
+      const message =
+        refineErrors.length > 0
+          ? refineErrors[0].message || 'Invalid request data'
+          : 'Invalid request data';
+      return res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: message,
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { qr_id, qr_code, short_code, guard_id, force_reassign } = validationResult.data;
+
+    // QR identifier validation is handled by schema refine above
+
+    // Verify guard exists and is active
+    const { data: guard, error: guardError } = await supabase
+      .from('guards')
+      .select('id, display_name, status')
+      .eq('id', guard_id)
+      .single();
+
+    if (guardError || !guard) {
+      return res.status(404).json({
+        error: 'PROCESSOR_ERROR',
+        message: 'Guard not found',
+      });
+    }
+
+    if (guard.status !== 'active') {
+      return res.status(400).json({
+        error: 'BUSINESS_RULE_VIOLATION',
+        message: `Guard status is ${guard.status}, only active guards can receive QR assignments`,
+      });
+    }
+
+    // Find QR code by provided identifier
+    let qrQuery = supabase.from('qr_codes').select('id, code, short_code, status, assigned_guard_id, assigned_at');
+
+    if (qr_id) {
+      qrQuery = qrQuery.eq('id', qr_id);
+    } else if (qr_code) {
+      qrQuery = qrQuery.eq('code', qr_code);
+    } else if (short_code) {
+      qrQuery = qrQuery.eq('short_code', short_code);
+    }
+
+    const { data: qr, error: qrError } = await qrQuery.single();
+
+    if (qrError || !qr) {
+      return res.status(404).json({
+        error: 'PROCESSOR_ERROR',
+        message: 'QR code not found',
+      });
+    }
+
+    // Check QR state
+    const previousStatus = qr.status;
+    const previousGuardId = qr.assigned_guard_id;
+
+    // Validate QR can be assigned
+    if (!force_reassign && qr.status !== 'unassigned' && qr.assigned_guard_id) {
+      return res.status(400).json({
+        error: 'BUSINESS_RULE_VIOLATION',
+        message: `QR code is already assigned. Current status: ${qr.status}, Assigned to: ${qr.assigned_guard_id}. Use force_reassign=true to override`,
+      });
+    }
+
+    // If force_reassign, check if guard has an active QR that needs to be replaced
+    let oldQrReplaced = false;
+    if (force_reassign && previousGuardId && previousGuardId !== guard_id) {
+      // Find and replace old QR assigned to this guard
+      const { data: oldQr } = await supabase
+        .from('qr_codes')
+        .select('id, code, short_code')
+        .eq('assigned_guard_id', guard_id)
+        .in('status', ['assigned', 'active'])
+        .single();
+
+      if (oldQr) {
+        const { error: replaceError } = await supabase
+          .from('qr_codes')
+          .update({
+            status: 'replaced',
+            assigned_guard_id: null,
+            replaced_at: new Date().toISOString(),
+          })
+          .eq('id', oldQr.id);
+
+        if (replaceError) {
+          console.error('[admin] Error replacing old QR', replaceError?.message);
+          // Non-blocking, but log the error
+        } else {
+          oldQrReplaced = true;
+        }
+      }
+    }
+
+    // If QR was previously assigned to a different guard, mark it as replaced
+    if (previousGuardId && previousGuardId !== guard_id) {
+      const { error: unassignError } = await supabase
+        .from('qr_codes')
+        .update({
+          status: 'replaced',
+          assigned_guard_id: null,
+          replaced_at: new Date().toISOString(),
+        })
+        .eq('id', qr.id);
+
+      if (unassignError) {
+        console.error('[admin] Error unassigning previous QR', unassignError?.message);
+      }
+    }
+
+    // Assign QR to guard
+    const now = new Date().toISOString();
+    const { error: assignError } = await supabase
+      .from('qr_codes')
+      .update({
+        status: 'assigned',
+        assigned_guard_id: guard_id,
+        assigned_at: now,
+      })
+      .eq('id', qr.id);
+
+    if (assignError) {
+      console.error('[admin] Error assigning QR', assignError?.message);
+      return res.status(500).json({
+        error: 'PROCESSOR_ERROR',
+        message: 'Failed to assign QR code',
+      });
+    }
+
+    // Log audit event
+    try {
+      await logAuditEvent({
+        event_type: 'QR_ASSIGNED',
+        event_category: 'admin',
+        actor_user_id: req.auth!.userId,
+        actor_role: req.auth!.role,
+        entity_type: 'qr_codes',
+        entity_id: qr.id,
+        action: 'admin_assign',
+        description: `Admin assigned QR code ${qr.code || qr.short_code} to guard ${guard_id}`,
+        status: 'success',
+        metadata: {
+          qr_id: qr.id,
+          qr_code: qr.code || qr.short_code,
+          guard_id: guard_id,
+          previous_status: previousStatus,
+          previous_guard_id: previousGuardId,
+          force_reassign: force_reassign,
+          old_qr_replaced: oldQrReplaced,
+        },
+      });
+    } catch (auditError) {
+      console.error(
+        '[admin] Audit logging error',
+        auditError instanceof Error ? auditError.message : String(auditError)
+      );
+      // Non-blocking
+    }
+
+    return res.status(200).json({
+      success: true,
+      qr: {
+        id: qr.id,
+        code: qr.code || qr.short_code,
+        status: 'assigned',
+      },
+      guard: {
+        id: guard_id,
+        display_name: guard.display_name,
+      },
+      previous_status: previousStatus,
+      previous_guard_id: previousGuardId,
+      old_qr_replaced: oldQrReplaced,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[admin] QR assignment error', errorMessage);
+    return res.status(500).json({
+      error: 'PROCESSOR_ERROR',
+      message: 'Failed to assign QR code',
+    });
+  }
+});
+
+/**
+ * POST /admin/settings/set
+ * Update runtime settings (admin-editable defaults)
+ * Per Ledger §7: Admin endpoint
+ * Per Ledger §3: Config (Admin-Editable Defaults)
+ *
+ * Auth: Requires 'admin' role (Ledger §2.4, §8)
+ *
+ * Allows admin to update mutable settings in app_settings table.
+ * Validates allowed keys, types, and ranges per Ledger §3.
+ * Does NOT modify environment variables (those remain in Doppler/GitHub secrets).
+ */
+const settingsSetSchema = z.object({
+  settings: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        value: z.union([z.string(), z.number(), z.boolean()]),
+      })
+    )
+    .min(1),
+});
+
+// Allowed mutable settings per Ledger §3
+// Locked settings (e.g., PAYMENT_PROVIDER = "Yoco") cannot be changed via API
+const ALLOWED_MUTABLE_SETTINGS = [
+  'PLATFORM_FEE_PERCENT',
+  'VAT_ENABLED',
+  'VAT_RATE_PERCENT',
+  'CASH_SEND_FEE_ZAR',
+  'PAYOUT_MIN_ELIGIBILITY_ZAR',
+  'REFERRAL_FEE_PER_GUARD_ZAR',
+  'REFERRAL_TIP_THRESHOLD_ZAR',
+  'REFERRAL_PAYOUT_MINIMUM_ZAR',
+  'QR_REPLACEMENT_FEE_ZAR',
+  'REFERENCE_PREFIX',
+  'TIP_HISTORY_MAX_ROWS',
+  'NEARBY_RADIUS_METERS',
+  'NEARBY_DWELL_MINUTES',
+];
+
+router.post('/settings/set', requireAuth, requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    // Validate request body
+    const validationResult = settingsSetSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Invalid request data',
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { settings } = validationResult.data;
+
+    const results: Array<{
+      key: string;
+      old_value: string | null;
+      new_value: string;
+      status: 'success' | 'error';
+      error?: string;
+    }> = [];
+
+    // Process each setting update
+    for (const setting of settings) {
+      const { key, value } = setting;
+
+      // Validate key is allowed and not locked
+      if (!ALLOWED_MUTABLE_SETTINGS.includes(key)) {
+        results.push({
+          key,
+          old_value: null,
+          new_value: String(value),
+          status: 'error',
+          error: `Setting key '${key}' is not allowed to be modified via API or is locked`,
+        });
+        continue;
+      }
+
+      // Get current setting
+      const { data: currentSetting, error: fetchError } = await supabase
+        .from('app_settings')
+        .select('id, key, value, value_type, is_locked')
+        .eq('key', key)
+        .single();
+
+      if (fetchError || !currentSetting) {
+        results.push({
+          key,
+          old_value: null,
+          new_value: String(value),
+          status: 'error',
+          error: 'Setting not found',
+        });
+        continue;
+      }
+
+      // Check if setting is locked
+      if (currentSetting.is_locked) {
+        results.push({
+          key,
+          old_value: currentSetting.value,
+          new_value: String(value),
+          status: 'error',
+          error: `Setting '${key}' is locked and cannot be modified`,
+        });
+        continue;
+      }
+
+      // Validate value type matches setting type
+      const expectedType = currentSetting.value_type || 'string';
+      const actualType = typeof value;
+      let validType = false;
+
+      if (expectedType === 'string' && actualType === 'string') {
+        validType = true;
+      } else if (expectedType === 'number' && actualType === 'number') {
+        // Additional validation for numeric ranges
+        const numValue = value as number;
+        if (key.includes('PERCENT') && (numValue < 0 || numValue > 100)) {
+          results.push({
+            key,
+            old_value: currentSetting.value,
+            new_value: String(value),
+            status: 'error',
+            error: 'Percentage values must be between 0 and 100',
+          });
+          continue;
+        }
+        if (key.includes('FEE') && numValue < 0) {
+          results.push({
+            key,
+            old_value: currentSetting.value,
+            new_value: String(value),
+            status: 'error',
+            error: 'Fee values cannot be negative',
+          });
+          continue;
+        }
+        validType = true;
+      } else if (expectedType === 'boolean' && actualType === 'boolean') {
+        validType = true;
+      }
+
+      if (!validType) {
+        results.push({
+          key,
+          old_value: currentSetting.value,
+          new_value: String(value),
+          status: 'error',
+          error: `Value type mismatch. Expected ${expectedType}, got ${actualType}`,
+        });
+        continue;
+      }
+
+      // Update setting
+      const { error: updateError } = await supabase
+        .from('app_settings')
+        .update({
+          value: String(value),
+          updated_by_user_id: req.auth!.userId,
+        })
+        .eq('id', currentSetting.id);
+
+      if (updateError) {
+        results.push({
+          key,
+          old_value: currentSetting.value,
+          new_value: String(value),
+          status: 'error',
+          error: updateError.message,
+        });
+        continue;
+      }
+
+      results.push({
+        key,
+        old_value: currentSetting.value,
+        new_value: String(value),
+        status: 'success',
+      });
+
+      // Log audit event for each setting change
+      try {
+        await logAuditEvent({
+          event_type: 'SETTING_UPDATED',
+          event_category: 'admin',
+          actor_user_id: req.auth!.userId,
+          actor_role: req.auth!.role,
+          entity_type: 'app_settings',
+          entity_id: currentSetting.id,
+          action: 'update',
+          description: `Setting '${key}' updated from '${currentSetting.value}' to '${value}'`,
+          status: 'success',
+          metadata: {
+            key: key,
+            old_value: currentSetting.value,
+            new_value: String(value),
+            value_type: expectedType,
+          },
+        });
+      } catch (auditError) {
+        console.error(
+          '[admin] Audit logging error for setting update',
+          auditError instanceof Error ? auditError.message : String(auditError)
+        );
+        // Non-blocking
+      }
+    }
+
+    // Count successes and errors
+    const successCount = results.filter((r) => r.status === 'success').length;
+    const errorCount = results.filter((r) => r.status === 'error').length;
+
+    return res.status(errorCount === 0 ? 200 : 207).json({
+      success: errorCount === 0,
+      updated: successCount,
+      errors: errorCount,
+      results: results,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[admin] Settings update error', errorMessage);
+    return res.status(500).json({
+      error: 'PROCESSOR_ERROR',
+      message: 'Failed to update settings',
+    });
+  }
+});
 
 export default router;
