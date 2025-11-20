@@ -1,6 +1,13 @@
-# Database Migration Verification Script
-# Verifies all required migrations are applied
-# Ledger Reference: §4 (Data Model), §15 (Environments & Deployment)
+<#
+    scripts/verify-database-migrations.ps1
+
+    Purpose:
+    - Verifies all required database migrations are applied.
+    - Lists required migrations and provides verification instructions.
+    - Never prints raw database credentials.
+
+    Ledger Reference: §4 (Data Model), §15 (Environments & Deployment)
+#>
 
 param(
     [string]$Environment = "production"

@@ -111,6 +111,26 @@ npm test
 npm run test:coverage
 ```
 
+### Development / PowerShell Scripts
+
+PowerShell scripts in `scripts/` are linted using PSScriptAnalyzer to ensure code quality and consistency.
+
+```bash
+# Lint all PowerShell scripts
+npm run lint:ps
+```
+
+**Pre-commit Hook**: A Git pre-commit hook automatically runs PSScriptAnalyzer on changed `.ps1` files. Errors will block the commit; warnings are shown but don't block.
+
+**CI**: The `ps-scripts-lint` job in `.github/workflows/doppler-ci.yml` enforces the same standards on all PRs and pushes to `main`.
+
+**Configuration**: PSScriptAnalyzer rules are configured in `PSScriptAnalyzerSettings.psd1` at the repo root. The configuration enforces:
+- No assignment to automatic variables (error)
+- All variables must be used (error)
+- Consistent code style (warnings)
+
+**Security**: All scripts follow Ledger §13.6 (Logging) - never print raw secrets or sensitive data.
+
 ### Security & Compliance
 
 - No plaintext secrets in code

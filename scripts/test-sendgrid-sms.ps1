@@ -1,6 +1,13 @@
-# SendGrid SMS Integration Test
-# Tests Welcome SMS functionality per Ledger §24.3
-# Ledger Reference: §24.3 (Welcome SMS Policy), §25.2 (SendGrid)
+<#
+    scripts/test-sendgrid-sms.ps1
+
+    Purpose:
+    - Tests SendGrid SMS integration and configuration.
+    - Verifies API key validity and SMS setup.
+    - Never prints raw API keys or secrets.
+
+    Ledger Reference: §24.3 (Welcome SMS Policy), §25.2 (SendGrid)
+#>
 
 param(
     [string]$TestPhone = "",

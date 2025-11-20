@@ -61,3 +61,22 @@ jobs:
           doppler run --project tippy --config dev -- \
           npm run lint
 
+  ps-scripts-lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -ErrorAction Stop
+
+      - name: Run PowerShell script lint
+        shell: pwsh
+        run: |
+          Invoke-ScriptAnalyzer -Path 'scripts' -Recurse -Settings 'PSScriptAnalyzerSettings.psd1'
+

@@ -1,4 +1,10 @@
-# Create Doppler PR via GitHub API
+<#
+    scripts/create-pr-final.ps1
+
+    Purpose:
+    - Creates a draft PR for Doppler setup via GitHub API.
+    - Requires GITHUB_TOKEN environment variable.
+#>
 $prBody = "Adds Doppler CI workflow, runbook, rotation policy, and environment verification. No secrets included. See ops/doppler/README.md for operator steps."
 
 $headers = @{
@@ -26,4 +32,3 @@ try {
     }
     exit 1
 }
-

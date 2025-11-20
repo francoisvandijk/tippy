@@ -1,4 +1,10 @@
-# Create PR for Doppler setup
+<#
+    scripts/create-doppler-pr.ps1
+
+    Purpose:
+    - Creates a draft PR for Doppler setup via GitHub API.
+    - Requires GITHUB_TOKEN environment variable.
+#>
 param(
     [string]$GitHubToken = $env:GITHUB_TOKEN
 )
