@@ -24,9 +24,13 @@ This implementation provides the core payment processing functionality as define
 
 All configuration via environment variables (Doppler per §25):
 
-See `.env.example` for a complete list of all required environment variables. This file lists all variable names with obvious placeholders—no real secrets are included.
+**`.env.example`** is the canonical environment template. This file contains all required environment variables with placeholders only—no real secrets are included. It serves as the complete reference for all environment variables used by the Tippy application.
 
-**Note**: Real values are managed via Doppler per Ledger §25. For local development, use Doppler CLI (`doppler run`) or copy `.env.example` to `.env.local` (gitignored) and fill in your values. Doppler is preferred per §25.
+**Note**: Real values are managed via Doppler per Ledger §25. For local development:
+- **Preferred**: Use Doppler CLI: `doppler run -- npm run dev`
+- **Alternative**: Copy `.env.example` to `.env.local` (gitignored) and fill in your values
+
+See `.env.example` for the complete list of all environment variables, grouped by category (Database, Yoco, SMS, Referrals, etc.).
 
 Key variables include:
 - `SUPABASE_URL` / `DB_URL` — Database connection URL
