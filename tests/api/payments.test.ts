@@ -19,11 +19,16 @@ const createMockChain = () => ({
   })),
 });
 
-vi.mock('../../src/lib/db', () => ({
-  supabase: {
-    from: vi.fn(() => createMockChain()),
-  },
-}));
+vi.mock('../../src/lib/db', () => {
+  const mockSupabaseFrom = vi.fn(() => createMockChain());
+  const mockSupabaseRpc = vi.fn();
+  return {
+    supabase: {
+      from: mockSupabaseFrom,
+      rpc: mockSupabaseRpc,
+    },
+  };
+});
 
 // Mock YocoClient - MUST be before all imports
 vi.mock('../../src/lib/yoco', () => {

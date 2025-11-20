@@ -8,9 +8,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
   const mockSupabaseFrom = vi.fn();
+  const mockSupabaseRpc = vi.fn();
   return {
     supabase: {
       from: mockSupabaseFrom,
+      rpc: mockSupabaseRpc,
     },
   };
 });

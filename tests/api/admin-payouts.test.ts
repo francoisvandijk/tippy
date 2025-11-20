@@ -8,9 +8,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
   const mockSupabaseFrom = vi.fn();
+  const mockSupabaseRpc = vi.fn();
   return {
     supabase: {
       from: mockSupabaseFrom,
+      rpc: mockSupabaseRpc,
     },
   };
 });
@@ -41,6 +43,7 @@ import app from '../../src/server';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
+const mockSupabaseRpc = (dbModule.supabase as any).rpc;
 
 // Test JWT secret (for generating test tokens)
 const TEST_JWT_SECRET = 'test-secret-key-for-testing-only';
@@ -67,6 +70,7 @@ describe('POST /admin/payouts/generate-weekly', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSupabaseFrom.mockReset();
+    mockSupabaseRpc.mockReset();
   });
 
   describe('QR_REPLACEMENT fee integration', () => {
@@ -88,6 +92,16 @@ describe('POST /admin/payouts/generate-weekly', () => {
                     error: null,
                   })
                 ),
+              })),
+            })),
+          };
+        }
+
+        if (table === 'referrals') {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(() => ({
+                order: vi.fn(() => Promise.resolve({ data: [], error: null })),
               })),
             })),
           };
@@ -262,6 +276,16 @@ describe('POST /admin/payouts/generate-weekly', () => {
           };
         }
 
+        if (table === 'referrals') {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(() => ({
+                order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+              })),
+            })),
+          };
+        }
+
         // Check for existing batch - should find one
         if (table === 'payout_batches') {
           const eqChain = {
@@ -318,6 +342,16 @@ describe('POST /admin/payouts/generate-weekly', () => {
                     error: null,
                   })
                 ),
+              })),
+            })),
+          };
+        }
+
+        if (table === 'referrals') {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(() => ({
+                order: vi.fn(() => Promise.resolve({ data: [], error: null })),
               })),
             })),
           };
@@ -453,6 +487,205 @@ describe('POST /admin/payouts/generate-weekly', () => {
       // Guard should have R2000 - R9 (CashSend) - R20 (2x QR fees) = R1971 net
       // Verify CSV includes both QR fees
       expect(response.body.csv_preview).toContain('QR_REPLACEMENT');
+    });
+
+    it('should award referral milestone rewards when guards cross threshold', async () => {
+      const adminToken = generateTestToken('admin-123', 'admin');
+      const guardId = 'guard-milestone';
+      const referralId = 'referral-001';
+      const referrerId = 'referrer-001';
+      const batchId = 'batch-456';
+
+      mockSupabaseRpc.mockResolvedValueOnce({
+        data: [
+          {
+            milestone_id: 'milestone-001',
+            referrer_id: referrerId,
+            referral_id: referralId,
+            guard_id: guardId,
+            reward_amount_zar_cents: 2000,
+            balance_after_zar_cents: 2000,
+          },
+        ],
+        error: null,
+      });
+
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'users') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'admin' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+
+        if (table === 'referrals') {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(() => ({
+                order: vi.fn(() =>
+                  Promise.resolve({
+                    data: [
+                      {
+                        id: referralId,
+                        referrer_id: referrerId,
+                        referred_guard_id: guardId,
+                        status: 'active',
+                        milestone_reached_at: null,
+                        guards: {
+                          id: guardId,
+                          lifetime_gross_tips: 51000, // R510
+                        },
+                      },
+                    ],
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+
+        if (table === 'referral_milestones') {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(() => Promise.resolve({ data: [], error: null })),
+            })),
+          };
+        }
+
+        if (table === 'payout_batches') {
+          let callCount = 0;
+          return {
+            select: vi.fn(() => {
+              callCount++;
+              if (callCount === 1) {
+                const eqChain = {
+                  eq: vi.fn(() => ({
+                    single: vi.fn(() =>
+                      Promise.resolve({
+                        data: null,
+                        error: { code: 'PGRST116' },
+                      })
+                    ),
+                  })),
+                };
+                return {
+                  eq: vi.fn(() => eqChain),
+                };
+              }
+              return {
+                eq: vi.fn(() => ({
+                  single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+                })),
+              };
+            }),
+            insert: vi.fn(() => ({
+              select: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { id: batchId },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+            update: vi.fn(() => ({
+              eq: vi.fn(() => Promise.resolve({ error: null })),
+            })),
+          };
+        }
+
+        if (table === 'guards') {
+          return {
+            select: vi.fn(() => ({
+              gte: vi.fn(() => ({
+                eq: vi.fn(() =>
+                  Promise.resolve({
+                    data: [
+                      {
+                        id: guardId,
+                        lifetime_net_tips: 100000,
+                        lifetime_payouts: 0,
+                      },
+                    ],
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+
+        if (table === 'payout_batch_items') {
+          let callCount = 0;
+          return {
+            select: vi.fn(() => {
+              callCount++;
+              if (callCount === 1) {
+                return {
+                  eq: vi.fn(() => ({
+                    eq: vi.fn(() => ({
+                      in: vi.fn(() =>
+                        Promise.resolve({
+                          data: [],
+                          error: null,
+                        })
+                      ),
+                    })),
+                  })),
+                };
+              }
+              return {
+                eq: vi.fn(() => Promise.resolve({ error: null })),
+              };
+            }),
+            insert: vi.fn(() =>
+              Promise.resolve({
+                data: [{ id: 'payout-item-001' }],
+                error: null,
+              })
+            ),
+            update: vi.fn(() => ({
+              eq: vi.fn(() => Promise.resolve({ error: null })),
+            })),
+          };
+        }
+
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+            })),
+          })),
+        };
+      });
+
+      const response = await request(app)
+        .post('/admin/payouts/generate-weekly')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({});
+
+      expect(response.status).toBe(201);
+      expect(mockSupabaseRpc).toHaveBeenCalledOnce();
+      expect(mockSupabaseRpc).toHaveBeenCalledWith(
+        'award_referral_milestone',
+        expect.objectContaining({
+          p_referral_id: referralId,
+          p_guard_id: guardId,
+        })
+      );
+      expect(response.body.referral_milestones_summary).toMatchObject({
+        milestonesAwarded: 1,
+        totalRewardAmountZarCents: 2000,
+      });
     });
   });
 });

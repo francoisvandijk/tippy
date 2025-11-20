@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { logAuditEvent } from '../../lib/audit';
 import { requireAuth, requireRole } from '../../lib/auth';
 import { supabase } from '../../lib/db';
+import { processReferralMilestones } from '../../lib/referrals';
 
 const router = Router();
 
@@ -48,6 +49,15 @@ router.post(
       }
 
       const { period_start_date, period_end_date, force } = validationResult.data;
+
+      // Process referral milestones before generating payouts per Ledger §10
+      const referralMilestoneSummary = await processReferralMilestones();
+      if (referralMilestoneSummary.milestonesAwarded > 0) {
+        console.info('[referrals] Milestone rewards issued', {
+          milestonesAwarded: referralMilestoneSummary.milestonesAwarded,
+          totalRewardAmountZarCents: referralMilestoneSummary.totalRewardAmountZarCents,
+        });
+      }
 
       // Calculate payout period (previous Sat 00:00 → Fri 23:59)
       const now = new Date();
@@ -338,6 +348,7 @@ router.post(
         total_amount_zar_cents: totalAmount,
         total_cashsend_fees_zar_cents: totalCashSendFees,
         csv_preview: csvContent.substring(0, 500), // First 500 chars as preview
+        referral_milestones_summary: referralMilestoneSummary,
         status: 'generated',
       });
     } catch (error: unknown) {
