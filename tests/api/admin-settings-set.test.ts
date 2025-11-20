@@ -1,5 +1,5 @@
-// Tests for admin referral reversal endpoint
-// Ledger Reference: §7 (API Surface), §10.2 (T+30 reversal logic), §10.3 (Eligibility & Payout)
+// Tests for admin settings set endpoint
+// Ledger Reference: §7 (API Surface), §3 (Config - Admin-Editable Defaults)
 
 import { sign } from 'jsonwebtoken';
 import request from 'supertest';
@@ -8,11 +8,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock Supabase - MUST be before all imports
 vi.mock('../../src/lib/db', () => {
   const mockSupabaseFrom = vi.fn();
-  const mockSupabaseRpc = vi.fn();
   return {
     supabase: {
       from: mockSupabaseFrom,
-      rpc: mockSupabaseRpc,
     },
   };
 });
@@ -25,24 +23,7 @@ vi.mock('../../src/lib/audit', () => {
   };
 });
 
-// Mock referral reversal processing - MUST be before all imports
-vi.mock('../../src/lib/referralReversal', () => {
-  const mockProcessReferralReversals = vi.fn(() =>
-    Promise.resolve({
-      config: { enabled: true, reversalWindowDays: 30 },
-      totalCandidates: 0,
-      reversalsProcessed: 0,
-      totalReversalAmountZarCents: 0,
-      reversals: [],
-      errors: [],
-    })
-  );
-  return {
-    processReferralReversals: mockProcessReferralReversals,
-  };
-});
-
-// Mock YocoClient - MUST be before all imports (server imports payments which uses YocoClient)
+// Mock YocoClient - MUST be before all imports
 vi.mock('../../src/lib/yoco', () => {
   return {
     YocoClient: class {
@@ -60,14 +41,10 @@ import app from '../../src/server';
 
 // Get the mocked supabase for test-specific mocks
 const mockSupabaseFrom = (dbModule.supabase as any).from;
-const mockSupabaseRpc = (dbModule.supabase as any).rpc;
 
 // Test JWT secret (for generating test tokens)
 const TEST_JWT_SECRET = 'test-secret-key-for-testing-only';
 process.env.SUPABASE_JWT_SECRET = TEST_JWT_SECRET;
-
-// Shared call counter for referral_earnings_ledger across multiple calls
-let referralEarningsLedgerCallCount = 0;
 
 /**
  * Generate a test JWT token
@@ -84,17 +61,15 @@ function generateTestToken(userId: string, role: string = 'admin'): string {
   );
 }
 
-describe('POST /admin/referral/reversal', () => {
+describe('POST /admin/settings/set', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSupabaseFrom.mockReset();
-    mockSupabaseRpc.mockReset();
-    referralEarningsLedgerCallCount = 0; // Reset shared counter
   });
 
   describe('Auth & Roles', () => {
     it('should return 401 for unauthenticated requests', async () => {
-      const response = await request(app).post('/admin/referral/reversal').send({});
+      const response = await request(app).post('/admin/settings/set').send({});
 
       expect(response.status).toBe(401);
     });
@@ -102,60 +77,18 @@ describe('POST /admin/referral/reversal', () => {
     it('should return 403 for non-admin users', async () => {
       const guardToken = generateTestToken('guard-123', 'guard');
       const response = await request(app)
-        .post('/admin/referral/reversal')
+        .post('/admin/settings/set')
         .set('Authorization', `Bearer ${guardToken}`)
-        .send({});
+        .send({
+          settings: [{ key: 'PLATFORM_FEE_PERCENT', value: 10.5 }],
+        });
 
       expect(response.status).toBe(403);
     });
 
     it('should allow admin users', async () => {
       const adminToken = generateTestToken('admin-123', 'admin');
-
-      // Mock user lookup for auth
-      mockSupabaseFrom.mockImplementation((table: string) => {
-        if (table === 'users') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                single: vi.fn(() =>
-                  Promise.resolve({
-                    data: { role: 'admin' },
-                    error: null,
-                  })
-                ),
-              })),
-            })),
-          };
-        }
-        return {
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              single: vi.fn(() => Promise.resolve({ data: null, error: null })),
-            })),
-          })),
-        };
-      });
-
-      const response = await request(app)
-        .post('/admin/referral/reversal')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({});
-
-      // Should process bulk reversals (no parameters)
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-    });
-  });
-
-  describe('Manual Reversal', () => {
-    it('should reverse a specific milestone when milestone_id and reason provided', async () => {
-      const adminToken = generateTestToken('admin-123', 'admin');
-      const milestoneId = 'milestone-123';
-      const referralId = 'referral-123';
-      const referrerId = 'referrer-123';
-      const guardId = 'guard-123';
-      const reason = 'Chargeback detected';
+      const settingId = 'setting-123';
 
       // Mock user lookup for auth
       mockSupabaseFrom.mockImplementation((table: string) => {
@@ -174,62 +107,27 @@ describe('POST /admin/referral/reversal', () => {
           };
         }
 
-        if (table === 'referral_milestones') {
+        if (table === 'app_settings') {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 single: vi.fn(() =>
                   Promise.resolve({
                     data: {
-                      id: milestoneId,
-                      referrer_id: referrerId,
-                      referral_id: referralId,
-                      guard_id: guardId,
-                      reward_amount_zar_cents: 2000, // R20
-                      status: 'rewarded',
-                      rewarded_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+                      id: settingId,
+                      key: 'PLATFORM_FEE_PERCENT',
+                      value: '10.00',
+                      value_type: 'number',
+                      is_locked: false,
                     },
                     error: null,
                   })
                 ),
               })),
             })),
-          };
-        }
-
-        if (table === 'referral_earnings_ledger') {
-          return {
-            select: vi.fn(() => {
-              referralEarningsLedgerCallCount++;
-              if (referralEarningsLedgerCallCount === 1) {
-                // First call: find EARNED entry
-                return {
-                  eq: vi.fn(() => ({
-                    eq: vi.fn(() => ({
-                      limit: vi.fn(() =>
-                        Promise.resolve({
-                          data: [{ id: 'earned-123' }],
-                          error: null,
-                        })
-                      ),
-                    })),
-                  })),
-                };
-              }
-              // Second call: check for existing reversal
-              return {
-                eq: vi.fn(() => ({
-                  eq: vi.fn(() => ({
-                    limit: vi.fn(() =>
-                      Promise.resolve({
-                        data: [], // No existing reversal
-                        error: null,
-                      })
-                    ),
-                  })),
-                })),
-              };
-            }),
+            update: vi.fn(() => ({
+              eq: vi.fn(() => Promise.resolve({ error: null })),
+            })),
           };
         }
 
@@ -242,40 +140,20 @@ describe('POST /admin/referral/reversal', () => {
         };
       });
 
-      // Mock RPC function for reversal
-      mockSupabaseRpc.mockResolvedValueOnce({
-        data: [
-          {
-            reversal_id: 'reversal-123',
-            balance_after_zar_cents: 0,
-          },
-        ],
-        error: null,
-      });
-
       const response = await request(app)
-        .post('/admin/referral/reversal')
+        .post('/admin/settings/set')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          milestone_id: milestoneId,
-          reason: reason,
+          settings: [{ key: 'PLATFORM_FEE_PERCENT', value: 10.5 }],
         });
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.reversal_id).toBe('reversal-123');
-      expect(response.body.milestone_id).toBe(milestoneId);
-      expect(response.body.reason).toBe(reason);
-      expect(mockSupabaseRpc).toHaveBeenCalledWith(
-        'reverse_referral_milestone',
-        expect.objectContaining({
-          p_milestone_id: milestoneId,
-          p_reversal_reason: reason,
-        })
-      );
     });
+  });
 
-    it('should require reason for manual reversal', async () => {
+  describe('Validation', () => {
+    it('should return 400 if settings array is missing', async () => {
       const adminToken = generateTestToken('admin-123', 'admin');
 
       // Mock user lookup for auth
@@ -304,19 +182,54 @@ describe('POST /admin/referral/reversal', () => {
       });
 
       const response = await request(app)
-        .post('/admin/referral/reversal')
+        .post('/admin/settings/set')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 if settings array is empty', async () => {
+      const adminToken = generateTestToken('admin-123', 'admin');
+
+      // Mock user lookup for auth
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'users') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'admin' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+            })),
+          })),
+        };
+      });
+
+      const response = await request(app)
+        .post('/admin/settings/set')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          milestone_id: 'milestone-123',
-          // Missing reason
+          settings: [],
         });
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('VALIDATION_ERROR');
-      expect(response.body.message).toContain('reason is required');
     });
 
-    it('should return 404 if milestone not found', async () => {
+    it('should reject disallowed setting keys', async () => {
       const adminToken = generateTestToken('admin-123', 'admin');
 
       // Mock user lookup for auth
@@ -336,7 +249,7 @@ describe('POST /admin/referral/reversal', () => {
           };
         }
 
-        if (table === 'referral_milestones') {
+        if (table === 'app_settings') {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
@@ -361,21 +274,20 @@ describe('POST /admin/referral/reversal', () => {
       });
 
       const response = await request(app)
-        .post('/admin/referral/reversal')
+        .post('/admin/settings/set')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          milestone_id: 'milestone-123',
-          reason: 'Test reason',
+          settings: [{ key: 'PAYMENT_PROVIDER', value: 'Stripe' }], // Locked key
         });
 
-      expect(response.status).toBe(404);
-      expect(response.body.error).toBe('PROCESSOR_ERROR');
-      expect(response.body.message).toContain('not found');
+      expect(response.status).toBe(207); // Partial success/failure
+      expect(response.body.results[0].status).toBe('error');
+      expect(response.body.results[0].error).toContain('not allowed');
     });
 
-    it('should return 409 if reversal already exists (idempotency)', async () => {
+    it('should reject updates to locked settings', async () => {
       const adminToken = generateTestToken('admin-123', 'admin');
-      const milestoneId = 'milestone-123';
+      const settingId = 'setting-123';
 
       // Mock user lookup for auth
       mockSupabaseFrom.mockImplementation((table: string) => {
@@ -394,20 +306,18 @@ describe('POST /admin/referral/reversal', () => {
           };
         }
 
-        if (table === 'referral_milestones') {
+        if (table === 'app_settings') {
           return {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 single: vi.fn(() =>
                   Promise.resolve({
                     data: {
-                      id: milestoneId,
-                      referrer_id: 'referrer-123',
-                      referral_id: 'referral-123',
-                      guard_id: 'guard-123',
-                      reward_amount_zar_cents: 2000,
-                      status: 'rewarded',
-                      rewarded_at: new Date().toISOString(),
+                      id: settingId,
+                      key: 'PLATFORM_FEE_PERCENT',
+                      value: '10.00',
+                      value_type: 'number',
+                      is_locked: true, // Locked!
                     },
                     error: null,
                   })
@@ -417,43 +327,6 @@ describe('POST /admin/referral/reversal', () => {
           };
         }
 
-        if (table === 'referral_earnings_ledger') {
-          let callCount = 0;
-          return {
-            select: vi.fn(() => {
-              callCount++;
-              if (callCount === 1) {
-                // First call: find EARNED entry
-                return {
-                  eq: vi.fn(() => ({
-                    eq: vi.fn(() => ({
-                      limit: vi.fn(() =>
-                        Promise.resolve({
-                          data: [{ id: 'earned-123' }],
-                          error: null,
-                        })
-                      ),
-                    })),
-                  })),
-                };
-              }
-              // Second call: check for existing reversal - exists!
-              return {
-                eq: vi.fn(() => ({
-                  eq: vi.fn(() => ({
-                    limit: vi.fn(() =>
-                      Promise.resolve({
-                        data: [{ id: 'existing-reversal-123' }],
-                        error: null,
-                      })
-                    ),
-                  })),
-                })),
-              };
-            }),
-          };
-        }
-
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
@@ -464,22 +337,22 @@ describe('POST /admin/referral/reversal', () => {
       });
 
       const response = await request(app)
-        .post('/admin/referral/reversal')
+        .post('/admin/settings/set')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          milestone_id: milestoneId,
-          reason: 'Test reason',
+          settings: [{ key: 'PLATFORM_FEE_PERCENT', value: 10.5 }],
         });
 
-      expect(response.status).toBe(409);
-      expect(response.body.error).toBe('VALIDATION_ERROR');
-      expect(response.body.message).toContain('already exists');
+      expect(response.status).toBe(207);
+      expect(response.body.results[0].status).toBe('error');
+      expect(response.body.results[0].error).toContain('locked');
     });
   });
 
-  describe('Bulk T+30 Processing', () => {
-    it('should process bulk T+30 reversals when no parameters provided', async () => {
+  describe('Core Behaviour', () => {
+    it('should update allowed setting successfully', async () => {
       const adminToken = generateTestToken('admin-123', 'admin');
+      const settingId = 'setting-123';
 
       // Mock user lookup for auth
       mockSupabaseFrom.mockImplementation((table: string) => {
@@ -497,6 +370,31 @@ describe('POST /admin/referral/reversal', () => {
             })),
           };
         }
+
+        if (table === 'app_settings') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: settingId,
+                      key: 'PLATFORM_FEE_PERCENT',
+                      value: '10.00',
+                      value_type: 'number',
+                      is_locked: false,
+                    },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+            update: vi.fn(() => ({
+              eq: vi.fn(() => Promise.resolve({ error: null })),
+            })),
+          };
+        }
+
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
@@ -507,13 +405,145 @@ describe('POST /admin/referral/reversal', () => {
       });
 
       const response = await request(app)
-        .post('/admin/referral/reversal')
+        .post('/admin/settings/set')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({});
+        .send({
+          settings: [{ key: 'PLATFORM_FEE_PERCENT', value: 10.5 }],
+        });
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.summary).toBeDefined();
+      expect(response.body.updated).toBe(1);
+      expect(response.body.results[0].status).toBe('success');
+      expect(response.body.results[0].old_value).toBe('10.00');
+      expect(response.body.results[0].new_value).toBe('10.5');
+    });
+
+    it('should validate percentage range (0-100)', async () => {
+      const adminToken = generateTestToken('admin-123', 'admin');
+      const settingId = 'setting-123';
+
+      // Mock user lookup for auth
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'users') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'admin' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+
+        if (table === 'app_settings') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: settingId,
+                      key: 'PLATFORM_FEE_PERCENT',
+                      value: '10.00',
+                      value_type: 'number',
+                      is_locked: false,
+                    },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+            })),
+          })),
+        };
+      });
+
+      const response = await request(app)
+        .post('/admin/settings/set')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          settings: [{ key: 'PLATFORM_FEE_PERCENT', value: 150 }], // Invalid: > 100
+        });
+
+      expect(response.status).toBe(207);
+      expect(response.body.results[0].status).toBe('error');
+      expect(response.body.results[0].error).toContain('between 0 and 100');
+    });
+
+    it('should validate value type matches setting type', async () => {
+      const adminToken = generateTestToken('admin-123', 'admin');
+      const settingId = 'setting-123';
+
+      // Mock user lookup for auth
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'users') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: { role: 'admin' },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+
+        if (table === 'app_settings') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                single: vi.fn(() =>
+                  Promise.resolve({
+                    data: {
+                      id: settingId,
+                      key: 'PLATFORM_FEE_PERCENT',
+                      value: '10.00',
+                      value_type: 'number',
+                      is_locked: false,
+                    },
+                    error: null,
+                  })
+                ),
+              })),
+            })),
+          };
+        }
+
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+            })),
+          })),
+        };
+      });
+
+      const response = await request(app)
+        .post('/admin/settings/set')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          settings: [{ key: 'PLATFORM_FEE_PERCENT', value: 'not-a-number' }], // Wrong type
+        });
+
+      expect(response.status).toBe(207);
+      expect(response.body.results[0].status).toBe('error');
+      expect(response.body.results[0].error).toContain('type mismatch');
     });
   });
 });
+
