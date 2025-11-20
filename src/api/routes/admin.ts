@@ -15,6 +15,7 @@ import { logAuditEvent } from '../../lib/audit';
 import { requireAuth, requireRole } from '../../lib/auth';
 import { supabase } from '../../lib/db';
 import { processReferralMilestones } from '../../lib/referrals';
+import { processReferralReversals } from '../../lib/referralReversal';
 
 const router = Router();
 
@@ -56,6 +57,15 @@ router.post(
         console.info('[referrals] Milestone rewards issued', {
           milestonesAwarded: referralMilestoneSummary.milestonesAwarded,
           totalRewardAmountZarCents: referralMilestoneSummary.totalRewardAmountZarCents,
+        });
+      }
+
+      // Process T+30 referral reversals per Ledger §10.2
+      const referralReversalSummary = await processReferralReversals();
+      if (referralReversalSummary.reversalsProcessed > 0) {
+        console.info('[referrals] T+30 reversals processed', {
+          reversalsProcessed: referralReversalSummary.reversalsProcessed,
+          totalReversalAmountZarCents: referralReversalSummary.totalReversalAmountZarCents,
         });
       }
 
@@ -349,6 +359,7 @@ router.post(
         total_cashsend_fees_zar_cents: totalCashSendFees,
         csv_preview: csvContent.substring(0, 500), // First 500 chars as preview
         referral_milestones_summary: referralMilestoneSummary,
+        referral_reversals_summary: referralReversalSummary,
         status: 'generated',
       });
     } catch (error: unknown) {
@@ -357,6 +368,64 @@ router.post(
       return res.status(500).json({
         error: 'PROCESSOR_ERROR',
         message: 'Failed to generate payout batch',
+      });
+    }
+  }
+);
+
+/**
+ * POST /admin/referral/reversal
+ * Process T+30 referral reversals manually
+ * Per Ledger §7: Admin endpoint
+ * Per Ledger §10.2: T+30 reversal logic
+ *
+ * Auth: Requires 'admin' role (Ledger §2.4, §8)
+ */
+router.post(
+  '/referral/reversal',
+  requireAuth,
+  requireRole('admin'),
+  async (req: Request, res: Response) => {
+    try {
+      // Process T+30 referral reversals
+      const reversalSummary = await processReferralReversals();
+
+      // Log audit event
+      try {
+        await logAuditEvent({
+          event_type: 'REFERRAL_REVERSAL_PROCESSED',
+          event_category: 'referral',
+          actor_user_id: req.auth!.userId,
+          actor_role: req.auth!.role,
+          entity_type: 'referral_reversal',
+          action: 'process_t30_reversals',
+          description: `T+30 referral reversals processed: ${reversalSummary.reversalsProcessed} reversals, ${reversalSummary.totalReversalAmountZarCents} cents reversed`,
+          status: reversalSummary.errors.length > 0 ? 'partial' : 'success',
+          metadata: {
+            totalCandidates: reversalSummary.totalCandidates,
+            reversalsProcessed: reversalSummary.reversalsProcessed,
+            totalReversalAmountZarCents: reversalSummary.totalReversalAmountZarCents,
+            errorCount: reversalSummary.errors.length,
+          },
+        });
+      } catch (auditError) {
+        console.error(
+          '[admin] Audit logging error',
+          auditError instanceof Error ? auditError.message : String(auditError)
+        );
+        // Non-blocking
+      }
+
+      return res.status(200).json({
+        success: true,
+        summary: reversalSummary,
+      });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[admin] Referral reversal processing error', errorMessage);
+      return res.status(500).json({
+        error: 'PROCESSOR_ERROR',
+        message: 'Failed to process referral reversals',
       });
     }
   }
