@@ -50,7 +50,7 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
         run: |
           doppler run --project tippy --config dev -- echo "Doppler OK"
-
+      
       - name: Run token validation
         id: validate
         env:
