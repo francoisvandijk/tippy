@@ -91,11 +91,15 @@ async function main(): Promise<void> {
   await checkTwilio();
   checkYoco();
 
-  const invalid = results.filter((r) => r.status === 'INVALID');
-  if (invalid.length > 0) {
-    process.exit(1);
-  }
-  process.exit(0);
+// Always print a clean summary (no secret values)
+for (const r of results) {
+  const suffix = r.code ? ` (${r.code})` : '';
+  console.log(`${r.name}: ${r.status}${suffix}`);
+}
+
+const invalid = results.filter((r) => r.status === 'INVALID');
+process.exit(invalid.length > 0 ? 1 : 0);
+
 }
 
 main().catch(() => process.exit(1));

@@ -51,16 +51,10 @@ jobs:
         run: |
           doppler run --project tippy --config dev -- echo "Doppler OK"
 
-      - name: Run token validation
-        id: validate
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
-        run: |
-          doppler run --project tippy --config dev -- npx tsx scripts/validate_tokens.ts > validation_output.txt 2>&1
-          EXIT=$?
-          echo "exit_code=$EXIT" >> "$GITHUB_OUTPUT"
-          cat validation_output.txt
-          exit $EXIT
+          - name: Run token validation
+          run: |
+            doppler run --project tippy --config dev -- \
+              npx tsx scripts/validate_tokens.ts        
         continue-on-error: true
 
       - name: Create or update Token Healthcheck Failed issue
