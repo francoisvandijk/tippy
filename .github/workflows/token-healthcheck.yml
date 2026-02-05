@@ -1,0 +1,105 @@
+# Token Healthcheck: validate tokens without printing secrets. §19.5, §25.x.
+# Schedule: Sunday 07:00 UTC (09:00 Africa/Johannesburg).
+name: Token Healthcheck
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sunday 07:00 UTC = 09:00 SAST (Africa/Johannesburg)
+    - cron: '0 7 * * 0'
+
+env:
+  ACTIONS_STEP_DEBUG: 'false'
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Doppler CLI
+        env:
+          DOPPLER_VERSION: "3.75.1"
+        run: |
+          set -e
+          ARCHIVE="doppler_${DOPPLER_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "${ARCHIVE}" "https://github.com/DopplerHQ/cli/releases/download/${DOPPLER_VERSION}/${ARCHIVE}"
+          curl -fsSL -o doppler-checksums.txt "https://github.com/DopplerHQ/cli/releases/download/${DOPPLER_VERSION}/checksums.txt"
+          grep "${ARCHIVE}" doppler-checksums.txt | sha256sum -c -
+          sudo tar -C /usr/local/bin -xzf "${ARCHIVE}" doppler
+          doppler --version
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
+        run: |
+          doppler run --project tippy --config dev -- npm ci
+
+      - name: Validate Doppler token
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
+        run: |
+          doppler run --project tippy --config dev -- echo "Doppler OK"
+
+      - name: Run token validation
+        id: validate
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_CI }}
+        run: |
+          doppler run --project tippy --config dev -- npx tsx scripts/validate_tokens.ts > validation_output.txt 2>&1
+          EXIT=$?
+          echo "exit_code=$EXIT" >> "$GITHUB_OUTPUT"
+          cat validation_output.txt
+          exit $EXIT
+        continue-on-error: true
+
+      - name: Create or update Token Healthcheck Failed issue
+        if: steps.validate.outputs.exit_code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FAILED_LINES=$(grep -E ' INVALID( [0-9]+)?$' validation_output.txt || true)
+          FAILED_SUMMARY=$(echo "$FAILED_LINES" | sed 's/^/- /' || echo "- One or more tokens failed validation (see workflow run for details).")
+          cat > issue_body.md << 'BODYEOF'
+          ## Token healthcheck failed
+
+          The following token(s) failed validation. **No secret values are included.**
+
+          ### Failed tokens
+          BODYEOF
+          echo "$FAILED_SUMMARY" >> issue_body.md
+          cat >> issue_body.md << BODYEOF2
+
+          ### Where used (references)
+          - `GITHUB_TOKEN` / `GH_TOKEN`: scripts (create-pr*.ps1, merge-and-closeout.ps1), Doppler dev config
+          - `SENDGRID_API_KEY`: src/lib/sms.ts, Doppler
+          - `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`: src/lib/sms.ts, Doppler
+          - `YOCO_*`: src/lib/yoco.ts, Doppler (validation: UNKNOWN in script; check manually)
+
+          ### Action required
+          1. Rotate or fix the failing token(s) per docs/security/secrets-rotation.md
+          2. Update Doppler (or GitHub secret for DOPPLER_TOKEN_CI) as needed
+          3. Re-run this workflow (Actions → Token Healthcheck → Run workflow)
+
+          **Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BODYEOF2
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" --title "🔐 Token Healthcheck Failed" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "${{ github.repository }}" --body-file issue_body.md
+          else
+            gh issue create --repo "${{ github.repository }}" --title "🔐 Token Healthcheck Failed" --body-file issue_body.md
+          fi
+
+      - name: Fail job if validation failed
+        if: steps.validate.outputs.exit_code == '1'
+        run: exit 1

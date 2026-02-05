@@ -16,6 +16,7 @@
     "lint": "eslint src tests --ext .ts",
     "lint:fix": "eslint src tests --ext .ts --fix",
     "lint:ps": "pwsh -NoProfile -Command \"Invoke-ScriptAnalyzer -Path 'scripts' -Recurse -Settings PSScriptAnalyzerSettings.psd1\"",
+    "validate-tokens": "tsx scripts/validate_tokens.ts",
     "prepare": "husky install"
   },
   "keywords": [],
