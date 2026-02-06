@@ -1,33 +1,48 @@
 /**
  * Token healthcheck: validate tokens/secrets without printing any secret values.
  * Ledger: §19.5, §25.x. Use with: doppler run -- npx tsx scripts/validate_tokens.ts
- * Output: TOKEN_NAME STATUS [HTTP_CODE]
- * Exit: 0 if all valid/skip, 1 if any invalid.
+ * Output: <ENV_NAME>: <STATUS> (<HTTP_CODE>) when applicable, else <ENV_NAME>: <STATUS>
+ * Exit: 0 if all valid/skip/unknown, 1 if any invalid.
  */
 
 const results: { name: string; status: 'VALID' | 'INVALID' | 'SKIP' | 'UNKNOWN'; code?: number }[] = [];
 
 function out(name: string, status: 'VALID' | 'INVALID' | 'SKIP' | 'UNKNOWN', code?: number): void {
   results.push({ name, status, code });
-  const line = code != null ? `${name} ${status} ${code}` : `${name} ${status}`;
+  const line = code != null ? `${name}: ${status} (${code})` : `${name}: ${status}`;
   if (process.stdout.writable) process.stdout.write(line + '\n');
 }
 
 async function checkGitHub(): Promise<void> {
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  const name = process.env.GITHUB_TOKEN ? 'GITHUB_TOKEN' : 'GH_TOKEN';
-  if (!token || token.trim() === '') {
-    out(name, 'SKIP');
-    return;
+  const ghToken = process.env.GITHUB_TOKEN;
+  const patToken = process.env.GH_TOKEN;
+
+  if (ghToken?.trim()) {
+    try {
+      const res = await fetch('https://api.github.com/rate_limit', {
+        headers: { Authorization: `token ${ghToken}` },
+      });
+      if (res.ok) out('GITHUB_TOKEN', 'VALID', 200);
+      else out('GITHUB_TOKEN', 'INVALID', res.status);
+    } catch {
+      out('GITHUB_TOKEN', 'INVALID', 0);
+    }
+  } else {
+    out('GITHUB_TOKEN', 'SKIP');
   }
-  try {
-    const res = await fetch('https://api.github.com/rate_limit', {
-      headers: { Authorization: `token ${token}` },
-    });
-    if (res.ok) out(name, 'VALID');
-    else out(name, 'INVALID', res.status);
-  } catch {
-    out(name, 'INVALID', 0);
+
+  if (patToken?.trim()) {
+    try {
+      const res = await fetch('https://api.github.com/rate_limit', {
+        headers: { Authorization: `token ${patToken}` },
+      });
+      if (res.ok) out('GH_TOKEN', 'VALID', 200);
+      else out('GH_TOKEN', 'INVALID', res.status);
+    } catch {
+      out('GH_TOKEN', 'INVALID', 0);
+    }
+  } else {
+    out('GH_TOKEN', 'SKIP');
   }
 }
 
@@ -41,7 +56,7 @@ async function checkSendGrid(): Promise<void> {
     const res = await fetch('https://api.sendgrid.com/v3/user/account', {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-    if (res.ok) out('SENDGRID_API_KEY', 'VALID');
+    if (res.ok) out('SENDGRID_API_KEY', 'VALID', 200);
     else out('SENDGRID_API_KEY', 'INVALID', res.status);
   } catch {
     out('SENDGRID_API_KEY', 'INVALID', 0);
@@ -61,17 +76,13 @@ async function checkTwilio(): Promise<void> {
     const res = await fetch(url, {
       headers: { Authorization: `Basic ${auth}` },
     });
-    if (res.ok) out('TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN', 'VALID');
+    if (res.ok) out('TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN', 'VALID', 200);
     else out('TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN', 'INVALID', res.status);
   } catch {
     out('TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN', 'INVALID', 0);
   }
 }
 
-/**
- * Yoco: no documented read-only validation endpoint; we do not call charges or other mutating APIs.
- * Mark as UNKNOWN so healthcheck does not fail for missing/invalid Yoco keys; report documents manual checks.
- */
 function checkYoco(): void {
   const nodeEnv = process.env.NODE_ENV || 'development';
   const isProd = nodeEnv === 'production';
